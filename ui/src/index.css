@@ -123,9 +123,11 @@
 /* Collapsible sections (React-rendered) */
 .markdown-body .details-block {
   margin: 0.6em 0;
-  border: 1px solid var(--details-border, #e5e7eb);
+  border: 1px solid var(--details-border, #dbeafe);
+  border-left: 3px solid var(--details-accent, #3b82f6);
   border-radius: 8px;
   overflow: hidden;
+  background: var(--details-body-bg, transparent);
 }
 .markdown-body .details-summary {
   cursor: pointer;
@@ -133,7 +135,7 @@
   padding: 0.55em 0.85em;
   font-weight: 600;
   font-size: 0.85rem;
-  background: var(--details-header-bg, #f9fafb);
+  background: var(--details-header-bg, linear-gradient(to right, #eff6ff, #f8fafc));
   border: none;
   border-bottom: 1px solid transparent;
   color: inherit;
@@ -152,10 +154,10 @@
   transform: rotate(180deg);
 }
 .markdown-body .details-summary:hover {
-  background: var(--details-header-hover, #f3f4f6);
+  background: var(--details-header-hover, linear-gradient(to right, #dbeafe, #eff6ff));
 }
 .markdown-body .details-block.is-open .details-summary {
-  border-bottom-color: var(--details-border, #e5e7eb);
+  border-bottom-color: var(--details-border, #dbeafe);
 }
 
 /* Details inner content */
@@ -239,20 +241,7 @@
   content: none;
 }
 
-/* ── Dark mode overrides ── */
-@media (prefers-color-scheme: dark) {
-  .markdown-body li::marker { --marker-color: #6b7280; }
-  .markdown-body hr { --hr-color: #374151; }
-  .markdown-body thead th { --table-border: #4b5563; }
-  .markdown-body tbody td { --table-border: #374151; }
-  .markdown-body code:not(pre code) { --code-bg: rgba(255,255,255,0.1); }
-  .markdown-body blockquote { --quote-border: #60a5fa; }
-  .markdown-body a { --link-color: #60a5fa; }
-  .markdown-body .details-block { --details-border: #374151; }
-  .markdown-body .details-summary { --details-header-bg: rgba(255,255,255,0.04); --details-header-hover: rgba(255,255,255,0.07); }
-}
-
-/* Dark class-based override (for explicit dark mode toggle) */
+/* ── Dark mode overrides (class-based; theme toggle adds .dark to <html>) ── */
 .dark .markdown-body li::marker { --marker-color: #6b7280; }
 .dark .markdown-body hr { --hr-color: #374151; }
 .dark .markdown-body thead th { --table-border: #4b5563; }
@@ -260,19 +249,10 @@
 .dark .markdown-body code:not(pre code) { --code-bg: rgba(255,255,255,0.1); }
 .dark .markdown-body blockquote { --quote-border: #60a5fa; }
 .dark .markdown-body a { --link-color: #60a5fa; }
-.dark .markdown-body .details-block { --details-border: #374151; }
+.dark .markdown-body .details-block { --details-border: #374151; --details-accent: #60a5fa; }
 .dark .markdown-body .details-summary { --details-header-bg: rgba(255,255,255,0.04); --details-header-hover: rgba(255,255,255,0.07); }
 
 /* Source pill dark mode */
-@media (prefers-color-scheme: dark) {
-  .source-pill {
-    --source-bg: rgba(96, 165, 250, 0.12);
-    --source-border: rgba(96, 165, 250, 0.25);
-    --source-text: #93bbfd;
-  }
-  .sources-section .sources-label { --text-muted: #9ca3af; }
-  .sources-section { --hr-color: #374151; }
-}
 .dark .source-pill {
   --source-bg: rgba(96, 165, 250, 0.12);
   --source-border: rgba(96, 165, 250, 0.25);
