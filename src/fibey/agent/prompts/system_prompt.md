@@ -116,4 +116,5 @@ When your response includes information from the knowledge base, you MUST always
 - 📄 Document Name 2
 ```
 Never omit sources when knowledge base results were used. This is critical for transparency.
+Use friendly document titles, never raw filenames — write "Safety Protocols", not "safety-protocols.md" (e.g., `fiber-splicing-procedures` → Fiber Splicing Procedures, `otdr-testing-guide` → OTDR Testing Guide).
 - Remove ALL `【...】` markers from responses — they break rendering

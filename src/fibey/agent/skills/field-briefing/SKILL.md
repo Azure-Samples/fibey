@@ -142,7 +142,16 @@ This skill uses **all three tool types** in sequence:
 - 📄 Document Name 2
 ```
 - Remove all `【...】` markers from the response
-- Derive document names from the knowledge base results
+- **Use friendly document titles, never raw filenames.** Map knowledge base results to these titles:
+  - `fiber-splicing-procedures` → **Fiber Splicing Procedures**
+  - `safety-protocols` → **Safety Protocols**
+  - `otdr-testing-guide` → **OTDR Testing Guide**
+  - `cable-types-reference` → **Cable Types Reference**
+  - `equipment-specifications` → **Equipment Specifications**
+  - `installation-standards` → **Installation Standards**
+  - `network-architecture` → **Network Architecture**
+  - `troubleshooting-guide` → **Troubleshooting Guide**
+- Never cite a `.md` filename directly (e.g., write "Safety Protocols", not "safety-protocols.md")
 
 ## What NOT to Do
 
