@@ -1,3 +1,6 @@
+# Foundry-hosted agent image: built remotely (remoteBuild) for the
+# `fibey-agent` service in azure.yaml. Installs deps from requirements.txt
+# and runs the hosted agent entrypoint (src/fibey/agent/hosted.py).
 FROM python:3.12-slim
 
 WORKDIR /app

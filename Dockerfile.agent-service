@@ -1,3 +1,6 @@
+# Agent-service image: Container App running the combined gateway + in-process
+# agent (fibey.agent.service:app). Referenced by the `agent-service` service
+# in azure.yaml. Installs the full package from pyproject.toml.
 FROM python:3.12-slim
 
 WORKDIR /app

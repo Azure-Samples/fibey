@@ -1,3 +1,5 @@
+# Minimal dependency set for the Foundry-hosted agent build (Dockerfile.agent).
+# Keep in sync with the corresponding dependencies in pyproject.toml.
 agent-framework>=1.4.0
 agent-framework-foundry-hosting
 azure-identity

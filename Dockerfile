@@ -1,3 +1,5 @@
+# Gateway-only image: serves the FastAPI gateway (fibey.gateway.api_server)
+# without the agent. Referenced by azure.yaml when deploying the gateway alone.
 FROM python:3.12-slim
 
 WORKDIR /app
