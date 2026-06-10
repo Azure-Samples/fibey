@@ -23,7 +23,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-950">
+    <div className="border-t border-gray-200 bg-slate-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <textarea
           value={text}
@@ -32,7 +32,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           placeholder="Ask Fibey something..."
           disabled={disabled}
           rows={1}
-          className="flex-1 resize-none rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900"
+          className="flex-1 resize-none rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900"
         />
         <button
           onClick={handleSend}

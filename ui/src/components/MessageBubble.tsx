@@ -172,7 +172,7 @@ export default function MessageBubble({ message, isStreaming }: MessageBubblePro
         className={`rounded-2xl px-5 py-3 ${
           isUser
             ? "max-w-[75%] bg-blue-600 text-white"
-            : "max-w-[85%] bg-gray-50 text-gray-900 ring-1 ring-gray-200 dark:bg-gray-800/80 dark:text-gray-100 dark:ring-gray-700"
+            : "max-w-[85%] bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800/80 dark:text-gray-100 dark:ring-gray-700"
         }`}
       >
         {isUser ? (

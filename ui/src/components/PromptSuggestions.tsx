@@ -73,7 +73,7 @@ export default function PromptSuggestions({ onSelect }: PromptSuggestionsProps) 
         <button
           key={i}
           onClick={() => onSelect(s.prompt)}
-          className="group rounded-xl border border-gray-200 bg-white p-4 text-left transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+          className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-600"
         >
           <p className="text-sm text-gray-800 group-hover:text-gray-950 dark:text-gray-200 dark:group-hover:text-white">
             {s.prompt}
