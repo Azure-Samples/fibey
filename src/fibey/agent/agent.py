@@ -274,8 +274,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                         # Accumulate arguments across streaming chunks
                         raw_args = getattr(content, "arguments", None) or ""
                         if isinstance(raw_args, dict):
-                            import json as _json
-                            raw_args = _json.dumps(raw_args)
+                            raw_args = json.dumps(raw_args)
                         if call_id not in pending_args:
                             pending_args[call_id] = raw_args
                             # Unwrap Foundry Toolbox tool-search-mode `call_tool` so
@@ -284,7 +283,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                             unwrapped_via_tool_search = False
                             if tool_name == "call_tool":
                                 try:
-                                    parsed = _json.loads(raw_args) if raw_args else {}
+                                    parsed = json.loads(raw_args) if raw_args else {}
                                 except Exception:
                                     parsed = {}
                                 inner_name = parsed.get("name") if isinstance(parsed, dict) else None
@@ -293,7 +292,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                                     call_id_to_name[call_id] = inner_name
                                     inner_args = parsed.get("arguments", {}) or {}
                                     if isinstance(inner_args, (dict, list)):
-                                        inner_args_str = _json.dumps(inner_args)
+                                        inner_args_str = json.dumps(inner_args)
                                     else:
                                         inner_args_str = str(inner_args)
                                     pending_args[call_id] = inner_args_str
@@ -306,7 +305,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                             skip = False
                             if tool_name == "load_skill":
                                 try:
-                                    parsed = _json.loads(raw_args) if raw_args else {}
+                                    parsed = json.loads(raw_args) if raw_args else {}
                                     skill_key = parsed.get("skill_name", "")
                                 except Exception:
                                     skill_key = ""
@@ -317,7 +316,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                                     seen_skill_loads.add(skill_key)
                             elif raw_args:
                                 try:
-                                    _json.loads(raw_args)  # only dedup if args are complete JSON
+                                    json.loads(raw_args)  # only dedup if args are complete JSON
                                     tool_args_key = f"{tool_name}::{raw_args}"
                                     owner = args_key_owner.get(tool_args_key)
                                     if owner is None:
@@ -350,7 +349,6 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                     elif ctype in ("mcp_server_tool_result", "function_result"):
                         call_id = getattr(content, "call_id", None) or ""
                         tool_name = call_id_to_name.get(call_id) or getattr(content, "tool_name", None) or getattr(content, "name", None) or "tool"
-                        import json as _json
 
                         # Log tool results so we can diagnose error/retry paths and
                         # verify the model is actually seeing what the toolbox returns.
@@ -360,7 +358,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                             is_error = False
                             if result_obj is not None:
                                 if isinstance(result_obj, (dict, list)):
-                                    result_repr = _json.dumps(result_obj)[:500]
+                                    result_repr = json.dumps(result_obj)[:500]
                                     if isinstance(result_obj, dict):
                                         is_error = bool(result_obj.get("isError")) or "error" in result_obj
                                 else:
@@ -378,7 +376,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                         extra_meta: dict[str, Any] = {}
                         if tool_name == "call_tool":
                             try:
-                                parsed_wrapper = _json.loads(pending_args.get(call_id, "") or "{}")
+                                parsed_wrapper = json.loads(pending_args.get(call_id, "") or "{}")
                             except Exception:
                                 parsed_wrapper = {}
                             inner_name = parsed_wrapper.get("name") if isinstance(parsed_wrapper, dict) else None
@@ -387,7 +385,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                                 call_id_to_name[call_id] = inner_name
                                 inner_args = parsed_wrapper.get("arguments", {}) or {}
                                 inner_args_str = (
-                                    _json.dumps(inner_args)
+                                    json.dumps(inner_args)
                                     if isinstance(inner_args, (dict, list))
                                     else str(inner_args)
                                 )
@@ -407,7 +405,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                                             raw_text = first.get("text")
                                 if raw_text is None and result_obj is not None:
                                     raw_text = str(result_obj)
-                                parsed_result = _json.loads(raw_text) if raw_text else {}
+                                parsed_result = json.loads(raw_text) if raw_text else {}
                                 tools_list = parsed_result.get("tools") if isinstance(parsed_result, dict) else None
                                 if isinstance(tools_list, list):
                                     extra_meta["results"] = [
@@ -434,7 +432,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                         # at early-emit time. Re-check ownership with the full args now.
                         if tool_name == "load_skill":
                             try:
-                                parsed = _json.loads(args_str) if args_str else {}
+                                parsed = json.loads(args_str) if args_str else {}
                                 skill_name = parsed.get("skill_name", "")
                             except Exception:
                                 skill_name = ""
@@ -461,7 +459,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
 
                             detail = f"Calling {tool_name}..."
                             try:
-                                parsed = _json.loads(args_str) if args_str else {}
+                                parsed = json.loads(args_str) if args_str else {}
                                 if isinstance(parsed, dict):
                                     for key in ("work_order_id", "part_id", "query"):
                                         val = parsed.get(key)
