@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -362,15 +362,15 @@ wheels = [
 
 [[package]]
 name = "agent-framework-mem0"
-version = "1.0.0b260519"
+version = "1.0.0b260311"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "agent-framework-core" },
     { name = "mem0ai" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/47/117b6b923f58f08ee1725f27ba474ba774aa430e7c4e7d3c6b231276136b/agent_framework_mem0-1.0.0b260519.tar.gz", hash = "sha256:781606565563873d7e92d3b1b173fa6fc76cb88e288135797f5d8eba0a5e5e24", size = 5310, upload-time = "2026-05-20T00:28:45.377Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/6e/0a4220133e3ebe87761a0dad1bb32b9e5a6ef0cfad0d4666622db3b2ee98/agent_framework_mem0-1.0.0b260311.tar.gz", hash = "sha256:6cc7270eed5be4cf24d39caad9a4cb00c6955898e36407dfae8a9d3b2a002508", size = 5279, upload-time = "2026-03-11T23:19:37.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/f7/3d8fd1023627be35cd0875345f06cb0fd44bc5b2b7461e802cf8fd3a60c8/agent_framework_mem0-1.0.0b260519-py3-none-any.whl", hash = "sha256:59b17cc081ee4e371089b7431aa29d3f528aa477381a03f87e92bdf02cbb8424", size = 5539, upload-time = "2026-05-20T00:28:35.827Z" },
+    { url = "https://files.pythonhosted.org/packages/49/c3/d845d3c2508e87ce930d44bac2af54a1c68b56a4e5970d14762091671682/agent_framework_mem0-1.0.0b260311-py3-none-any.whl", hash = "sha256:b303daac59bac7856d105bccc194fe6a3a9c8f7704e3773061c2c0b6eef18092", size = 5538, upload-time = "2026-03-11T23:19:36.896Z" },
 ]
 
 [[package]]
@@ -1852,7 +1852,7 @@ wheels = [
 
 [[package]]
 name = "mem0ai"
-version = "1.0.11"
+version = "2.0.0b2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openai" },
@@ -1863,9 +1863,9 @@ dependencies = [
     { name = "qdrant-client" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/1e/2f8a8cc4b8e7f6126f3367d27dc65eac5cd4ceb854888faa3a8f62a2c0a0/mem0ai-1.0.11.tar.gz", hash = "sha256:ddb803bedc22bd514606d262407782e88df929f6991b59f6972fb8a25cc06001", size = 201758, upload-time = "2026-04-06T11:31:43.695Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/56/2526e0634fd7ba484040a26a1bb0b28c8c9dd813ca4e9ad499e81f1e1471/mem0ai-2.0.0b2.tar.gz", hash = "sha256:cdc90c8806382b8c1a001ff4f47d03ff9646f4e6151b89b2b0d18736a60b16ba", size = 210483, upload-time = "2026-04-16T10:56:39.378Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/b5/f822c94e1b901f8a700af134c2473646de9a7db26364566f6a72d527d235/mem0ai-1.0.11-py3-none-any.whl", hash = "sha256:bcf4d678dc0a4d4e8eccaebe05562eae022fcdc825a0e3095d02f28cf61a5b6d", size = 297138, upload-time = "2026-04-06T11:31:41.716Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/ea/8b74afcbde2407a63b66115f8da0dfc523131b6d4220a1e6f3d9b0a7a76b/mem0ai-2.0.0b2-py3-none-any.whl", hash = "sha256:31d7016b9d8ff7096cc975b9b961f83a7e0f562c74a2873a20db4793cc1f43ba", size = 298199, upload-time = "2026-04-16T10:56:37.335Z" },
 ]
 
 [[package]]
