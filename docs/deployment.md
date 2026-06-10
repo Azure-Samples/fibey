@@ -12,7 +12,7 @@ This guide focuses on **Container Apps deployment** using `azd`.
 
 ## Architecture
 
-The deployment creates resources in a single resource group:
+The deployment creates all resources in a single resource group (`rg-<env-name>`):
 
 | Component | Azure Service | Source | Purpose |
 |-----------|---------------|--------|---------|
@@ -21,20 +21,21 @@ The deployment creates resources in a single resource group:
 | **Agent Service** | **Container App** | **src/fibey/agent/** | **Foundry agent + Toolbox MCP** |
 | Work Orders API | Container App | `services/work-orders-api/` | Work order CRUD backend |
 | Inventory MCP | Container App | `services/inventory-mcp/` | Inventory MCP server |
-| AI Search | Azure AI Search | `services/foundry-iq-docs/` | Knowledge base index |
-| Container Registry | ACR | — | Docker image storage |
+| Status Dashboard | Container App | `services/status-dashboard/` | Network/service status page |
+| AI Foundry account + project | Microsoft Foundry | `infra/core/ai/` | Hosts the model deployment, hosted agent, and toolbox |
+| Model deployment | Foundry | `azure.yaml` | `gpt-4.1-mini` (configurable) |
+| Foundry Toolbox | Foundry (postprovision) | `scripts/setup-toolbox.sh` | Single MCP endpoint dispatching to backend tools |
+| AI Search | Azure AI Search | `services/foundry-iq-docs/` | Knowledge base index + KB MCP endpoint |
+| Container Registry | ACR | — | Docker image storage (apps + hosted agent) |
 | Storage Account | Blob Storage | `services/foundry-iq-docs/` | Document storage |
-| Log Analytics | Workspace | — | Logging and monitoring |
+| Log Analytics / App Insights | Workspace | — | Logging and monitoring |
 
 ## Prerequisites
 
 - Azure subscription with Owner or Contributor + RBAC Admin roles
 - Azure CLI (`az`) and Azure Developer CLI (`azd`)
+- The azd AI agents extension: `azd extension install azure.ai.agents`
 - Docker Desktop (for local image builds if needed)
-- Access to Azure AI Foundry project with:
-  - Deployed Azure OpenAI model (e.g., `gpt-4`)
-  - Foundry Toolbox configured
-  - AI Search service
 
 ## Quick Deployment
 
@@ -47,48 +48,39 @@ cd fibey
 az login
 azd auth login
 
-# 3. Set required configuration
-azd env set FOUNDRY_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
-azd env set FOUNDRY_MODEL "gpt-4"
-azd env set TOOLBOX_MCP_URL "https://<account>.services.ai.azure.com/api/projects/<project>/toolboxes/<name>/mcp"
-azd env set AZURE_SEARCH_ENDPOINT "https://<search>.search.windows.net"
-azd env set AZURE_SEARCH_INDEX "<index-name>"
-
-# 4. Deploy everything
+# 3. Deploy everything
 azd up
 ```
 
+`azd up` performs the full deployment:
+
+1. **Provision** — creates the resource group, AI Foundry account + project,
+   model deployment, AI Search, storage, ACR, Container Apps environment, all
+   six container apps, the Foundry knowledge-base connection, and all RBAC
+   assignments (Bicep in `infra/`).
+2. **Postprovision hook** — uploads FoundryIQ docs, builds the search index,
+   and creates the knowledge source/base (`scripts/setup-knowledge-base.sh`).
+3. **Deploy** — builds and pushes container images for all apps and deploys
+   the hosted agent to the Foundry project.
+4. **Postdeploy hook** — creates the Foundry Toolbox with tool search enabled
+   (`scripts/setup-toolbox.sh`).
+
 **Important:** Do NOT include `?api-version=v1` in the `TOOLBOX_MCP_URL`. The agent code automatically appends this.
-
-## Resource group: fibey-agent (externally managed)
-
-This resource group is **not** managed by `azd`. It contains:
-
-| Resource | Purpose |
-|----------|---------|
-| AI Foundry Project | Hosts the agent runtime |
-| Foundry Toolbox | Single MCP endpoint dispatching to 4 tools |
-| AI Services | Chat completions model deployment |
-
-See the [Hosted Agent Deployment](#hosted-agent-deployment) section below for
-setup instructions and how to capture the endpoint values needed by the apps
-environment.
-
-> **Note:** The Toolbox must be configured to point at the Container App
-> FQDNs from the `fibey-apps` deployment (inventory-mcp, work-orders-api,
-> status-dashboard). This is a manual step in the Foundry portal after
-> both resource groups are set up.
 
 ## Environment variables
 
-These are set via `azd env set` and injected into the gateway Container App
-by the Bicep template:
+All values are produced as Bicep outputs and stored in the azd environment
+automatically — no manual `azd env set` steps are required. Useful overrides:
 
-| Variable | Description | Source |
-|----------|-------------|--------|
-| `FOUNDRY_PROJECT_ENDPOINT` | AI Foundry project endpoint | fibey-agent RG |
-| `FOUNDRY_MODEL` | Model deployment name | fibey-agent RG |
-| `TOOLBOX_MCP_URL` | Foundry Toolbox MCP endpoint (versioned URL) | fibey-agent RG |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FOUNDRY_MODEL` | `gpt-4.1-mini` | Model deployment name |
+| `FOUNDRY_MODEL_CAPACITY` | `100` | Model deployment capacity (TPM, in thousands). Preserved across `azd up` runs |
+| `TOOLBOX_NAME` | `fibey-toolbox` | Foundry Toolbox name |
+| `KB_NAME` | `fibey-field-ops-kb` | Knowledge base name |
+| `AZURE_SEARCH_INDEX` | `foundry-iq-docs-index` | Search index name |
+| `AZURE_AI_PROJECT_NAME` | `fibey-project` | Foundry project name |
+| `AZURE_AI_DEPLOYMENTS_LOCATION` | primary location | Region for the Foundry account/models |
 
 ## FoundryIQ Knowledge Base Setup
 
@@ -105,14 +97,21 @@ services/foundry-iq-docs/docs/
 → Foundry connection
 ```
 
-After `azd provision` (or after the infrastructure portion of `azd up`) completes:
+This pipeline is configured **automatically** by the azd postprovision hook
+(`scripts/postprovision.sh` → `scripts/setup-knowledge-base.sh`):
 
-1. **Upload documents to blob storage.** This repo already uses `services/foundry-iq-docs/docs/` as the upload source.
-2. **Create the search index and indexer.** Run `./scripts/setup-knowledge-base.sh` to create the blob data source, `foundry-iq-docs-index`, semantic configuration `default`, and the indexer that ingests the text-only markdown files.
-3. **Create the Knowledge Source.** Use the AI Search REST API with `api-version=2026-04-01` to create `fibey-field-ops-ks` with `kind: searchIndex`, pointing at `foundry-iq-docs-index`.
-4. **Create the Knowledge Base.** Use the AI Search REST API with `api-version=2026-04-01` to create `fibey-field-ops-kb`, referencing `fibey-field-ops-ks`. Configure with `low` reasoning effort, `extractiveData` output mode, and a lightweight chat completion model (e.g. `gpt-4o-mini`) for query planning.
-5. **Create the Foundry connection.** In the hosted agent AI Services account, create a `CognitiveSearch` connection with `ApiKey` auth pointing at the search service. Use this connection in the Toolbox with `azure_ai_search` tool type.
-6. **Assign RBAC.** Grant the AI Services managed identity `Search Index Data Reader` and `Search Index Data Contributor` on the search service.
+1. **Documents uploaded to blob storage** from `services/foundry-iq-docs/docs/`.
+2. **Search index and indexer created** — blob data source, `foundry-iq-docs-index`,
+   semantic configuration `default`, and the indexer that ingests the markdown files.
+3. **Knowledge Source created** — `fibey-field-ops-ks` (`kind: searchIndex`,
+   `api-version=2026-04-01`) pointing at `foundry-iq-docs-index`.
+4. **Knowledge Base created** — `fibey-field-ops-kb`, referencing `fibey-field-ops-ks`.
+5. **Foundry connection** — `kb-fibey-field-ops-kb` is created by Bicep
+   (`RemoteTool` + `ProjectManagedIdentity`, target = KB MCP endpoint).
+6. **RBAC** — Bicep grants the Foundry project and account managed identities
+   `Search Index Data Reader` on the search service.
+
+To re-run manually: `./scripts/setup-knowledge-base.sh` (requires an azd environment).
 
 ### Deployed components
 
@@ -145,45 +144,19 @@ The knowledge base retrieval was validated with semantic `intents` requests agai
 - All Container Apps are configured with **minReplicas: 1** to avoid cold starts.
 - The FoundryIQ documents are uploaded to blob storage and indexed separately — they are not part of the container deployment.
 - The status dashboard can be set to internal-only ingress if browser automation is the only consumer.
-- Infrastructure definitions live in `infra/` (Bicep modules). Toolbox registration inside Foundry is an operational step outside this repo.
+- Infrastructure definitions live in `infra/` (Bicep). The Foundry Toolbox is created automatically by the postprovision hook (`scripts/setup-toolbox.sh`).
 
-## Post-Deployment: RBAC Configuration
+## RBAC (automated)
 
-After deployment, configure managed identity permissions for the agent-service:
+All managed identity permissions are assigned by Bicep during `azd provision`:
 
-```bash
-# Get agent-service managed identity principal ID
-AGENT_MI_ID=$(az containerapp show \
-  --name fibey-apps-agent-service \
-  --resource-group <your-resource-group> \
-  --query identity.principalId -o tsv)
-
-echo "Agent Service MI: $AGENT_MI_ID"
-
-# Get Azure AI account resource ID (adjust for your subscription/resource group)
-AI_ACCOUNT_ID="/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account-name>"
-
-# Assign Cognitive Services User role
-az role assignment create \
-  --assignee-object-id "$AGENT_MI_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Cognitive Services User" \
-  --scope "$AI_ACCOUNT_ID"
-
-# Assign Azure AI Developer role
-az role assignment create \
-  --assignee-object-id "$AGENT_MI_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Azure AI Developer" \
-  --scope "$AI_ACCOUNT_ID"
-
-# Assign Cognitive Services OpenAI User role
-az role assignment create \
-  --assignee-object-id "$AGENT_MI_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Cognitive Services OpenAI User" \
-  --scope "$AI_ACCOUNT_ID"
-```
+| Identity | Role(s) | Scope |
+|----------|---------|-------|
+| agent-service Container App | Azure AI User (Foundry User), Cognitive Services User, Cognitive Services OpenAI User | AI Foundry account |
+| gateway Container App | Azure AI User (Foundry User), Cognitive Services User, Cognitive Services OpenAI User | AI Foundry account |
+| Foundry project + account | Search Index Data Reader | AI Search service |
+| AI Search | Storage Blob Data Reader | Storage account |
+| Foundry project | AcrPull | Container registry |
 
 ### Foundry RBAC Roles (Reference)
 
@@ -195,15 +168,6 @@ az role assignment create \
 | Foundry Owner | `c883944f-8b7b-4483-af10-35834be79c4a` | Full Foundry management |
 | Foundry Account Owner | `e47c6f54-e4a2-4754-9501-8e0985b135e1` | Account-level management |
 | Foundry Project Manager | `eadc314b-1a2d-4efa-be10-5d325db5065e` | Project management |
-
-To assign roles by GUID:
-```bash
-az role assignment create \
-  --assignee-object-id "$AGENT_MI_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "53ca6127-db72-4b80-b1b0-d745d6d5456d" \
-  --scope "$AI_ACCOUNT_ID"
-```
 
 **Current Implementation:** The Fibey Agent uses Cognitive Services roles (not Foundry-specific roles). This may change if Foundry Toolbox requires specific Foundry roles in future updates.
 
@@ -239,7 +203,7 @@ azd deploy fibey-agent
 |----------|--------|-------------|
 | `FOUNDRY_PROJECT_ENDPOINT` | Auto-injected | Foundry project endpoint URL |
 | `FOUNDRY_MODEL` | Auto-injected | Model deployment name (from `azure.yaml`) |
-| `TOOLBOX_MCP_URL` | `agent.yaml` | Toolbox MCP endpoint URL |
+| `TOOLBOX_MCP_URL` | `agent.yaml` (`${TOOLBOX_MCP_URL}` from the azd env, set by `azd provision`) | Toolbox MCP endpoint URL |
 
 > **Note:** All `FOUNDRY_*` and `AGENT_*` env vars are reserved by the platform.
 > Do not set them in `agent.yaml` — they are auto-injected from the deployment config.
@@ -257,13 +221,28 @@ azd deploy fibey-agent
 ### Foundry Toolbox
 
 The Toolbox lives in the same Foundry project and provides a single MCP
-endpoint that dispatches to the backend tools:
+endpoint that dispatches to the backend tools. It is created automatically by
+the postdeploy hook (`scripts/setup-toolbox.sh`):
 
 | Tool | Type | Backend |
 |------|------|---------|
-| Work Orders | OpenAPI | Container App (`work-orders-api`) |
+| Tool Search | `toolbox_search_preview` | Toolbox built-in tool discovery |
+| Work Orders | OpenAPI (anonymous) | Container App (`work-orders-api`) |
 | Inventory | MCP | Container App (`inventory-mcp`) |
-| Knowledge Base | Azure AI Search | `foundry-iq-docs-index` (semantic) |
+| Knowledge Base | MCP via `kb-fibey-field-ops-kb` connection | AI Search knowledge base (`fibey-field-ops-kb`) |
+
+**Tool search** is enabled on the toolbox: the initial `tools/list` exposes
+only `tool_search` and `call_tool`, and the agent discovers backend tools on
+demand by searching their descriptions. This keeps the model's tool list small
+as more tools are added.
+
+The hook skips creation if the toolbox already exists. To publish a new
+version (e.g., after Container App FQDNs change) — the script automatically
+promotes the new version to default:
+
+```bash
+FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh
+```
 
 ## Gateway Modes
 
@@ -271,7 +250,7 @@ The gateway supports three deployment modes configured via `AGENT_MODE` environm
 ### 1. Container App Mode (Current Default)
 ```bash
 AGENT_MODE=containerapp
-CONTAINERAPP_AGENT_URL=https://fibey-apps-agent-service...
+CONTAINERAPP_AGENT_URL=https://<env>-agent-service...
 ```
 - Self-hosted agent in Container Apps
 - Full control over deployment and scaling
@@ -334,14 +313,14 @@ az role assignment list \
 ```bash
 # Application logs
 az containerapp logs show \
-  --name fibey-apps-agent-service \
+  --name <env>-agent-service \
   --resource-group <resource-group> \
   --type console \
   --tail 100
 
 # System logs
 az containerapp logs show \
-  --name fibey-apps-agent-service \
+  --name <env>-agent-service \
   --resource-group <resource-group> \
   --type system \
   --tail 50
@@ -363,7 +342,7 @@ docker push <acr-name>.azurecr.io/fibey-agent-service:latest
 
 # Update container app
 az containerapp update \
-  --name fibey-apps-agent-service \
+  --name <env>-agent-service \
   --resource-group <resource-group> \
   --image <acr-name>.azurecr.io/fibey-agent-service:latest
 ```
@@ -374,13 +353,13 @@ After deployment, test the stack:
 
 ```bash
 # Test UI
-curl https://fibey-apps-ui.<env-subdomain>.azurecontainerapps.io/
+curl https://<env>-ui.<env-subdomain>.azurecontainerapps.io/
 
 # Test agent-service health
-curl https://fibey-apps-agent-service.<env-subdomain>.azurecontainerapps.io/api/health
+curl https://<env>-agent-service.<env-subdomain>.azurecontainerapps.io/api/health
 
 # Test end-to-end chat via gateway
-curl -X POST https://fibey-apps-gateway.<env-subdomain>.azurecontainerapps.io/api/chat \
+curl -X POST https://<env>-gateway.<env-subdomain>.azurecontainerapps.io/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"What tools do you have?","session_id":"test-123"}'
 ```

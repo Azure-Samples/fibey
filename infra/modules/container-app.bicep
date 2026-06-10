@@ -38,6 +38,9 @@ param maxReplicas int = 3
 @description('Tags applied to the Container App.')
 param tags object = {}
 
+@description('Enable a system-assigned managed identity on the Container App.')
+param enableSystemIdentity bool = false
+
 var resolvedContainerImage = empty(containerImage) ? 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest' : containerImage
 var appTags = union(tags, {
   'azd-service-name': serviceName
@@ -47,6 +50,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
   tags: appTags
+  identity: {
+    type: enableSystemIdentity ? 'SystemAssigned' : 'None'
+  }
   properties: {
     managedEnvironmentId: environmentId
     configuration: {
@@ -95,3 +101,6 @@ output id string = containerApp.id
 
 @description('Fully qualified domain name of the Container App ingress endpoint.')
 output fqdn string = containerApp.properties.configuration.ingress.fqdn
+
+@description('Principal ID of the system-assigned managed identity (empty when disabled).')
+output principalId string = enableSystemIdentity ? containerApp.identity.principalId : ''

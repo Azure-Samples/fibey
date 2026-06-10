@@ -5,32 +5,86 @@
     "environmentName": {
       "value": "${AZURE_ENV_NAME}"
     },
+    "resourceGroupName": {
+      "value": "${AZURE_RESOURCE_GROUP=}"
+    },
     "location": {
       "value": "${AZURE_LOCATION}"
     },
-    "uiImageName": {
-      "value": "${SERVICE_UI_IMAGE_NAME}"
+    "aiDeploymentsLocation": {
+      "value": "${AZURE_AI_DEPLOYMENTS_LOCATION=}"
     },
-    "gatewayImageName": {
-      "value": "${SERVICE_GATEWAY_IMAGE_NAME}"
+    "searchServiceLocation": {
+      "value": "${AZURE_SEARCH_LOCATION=}"
     },
-    "inventoryMcpImageName": {
-      "value": "${SERVICE_INVENTORY_MCP_IMAGE_NAME}"
+    "principalId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
     },
-    "workOrdersApiImageName": {
-      "value": "${SERVICE_WORK_ORDERS_API_IMAGE_NAME}"
+    "principalType": {
+      "value": "${AZURE_PRINCIPAL_TYPE=User}"
     },
-    "statusDashboardImageName": {
-      "value": "${SERVICE_STATUS_DASHBOARD_IMAGE_NAME}"
+    "resourceTokenSalt": {
+      "value": "${AZD_RESOURCE_TOKEN_SALT=}"
     },
-    "foundryProjectEndpoint": {
-      "value": "${FOUNDRY_PROJECT_ENDPOINT}"
+    "aiFoundryResourceName": {
+      "value": "${AZURE_AI_ACCOUNT_NAME=}"
+    },
+    "aiFoundryProjectName": {
+      "value": "${AZURE_AI_PROJECT_NAME=fibey-project}"
+    },
+    "aiProjectDeploymentsJson": {
+      "value": "${AI_PROJECT_DEPLOYMENTS=[]}"
+    },
+    "aiProjectConnectionsJson": {
+      "value": "${AI_PROJECT_CONNECTIONS=[]}"
+    },
+    "aiProjectConnectionCredentialsJson": {
+      "value": "${AI_PROJECT_CONNECTION_CREDENTIALS={}}"
+    },
+    "aiProjectDependentResourcesJson": {
+      "value": "${AI_PROJECT_DEPENDENT_RESOURCES=[]}"
+    },
+    "enableHostedAgents": {
+      "value": "${ENABLE_HOSTED_AGENTS=true}"
+    },
+    "enableCapabilityHost": {
+      "value": "${ENABLE_CAPABILITY_HOST=true}"
+    },
+    "enableMonitoring": {
+      "value": "${ENABLE_MONITORING=true}"
     },
     "foundryModel": {
-      "value": "${FOUNDRY_MODEL}"
+      "value": "${FOUNDRY_MODEL=gpt-4.1-mini}"
     },
-    "toolboxMcpUrl": {
-      "value": "${TOOLBOX_MCP_URL}"
+    "foundryModelCapacity": {
+      "value": "${FOUNDRY_MODEL_CAPACITY=100}"
+    },
+    "toolboxName": {
+      "value": "${TOOLBOX_NAME=fibey-toolbox}"
+    },
+    "knowledgeBaseName": {
+      "value": "${KB_NAME=fibey-field-ops-kb}"
+    },
+    "searchIndexName": {
+      "value": "${AZURE_SEARCH_INDEX=foundry-iq-docs-index}"
+    },
+    "uiImageName": {
+      "value": "${SERVICE_UI_IMAGE_NAME=}"
+    },
+    "gatewayImageName": {
+      "value": "${SERVICE_GATEWAY_IMAGE_NAME=}"
+    },
+    "agentServiceImageName": {
+      "value": "${SERVICE_AGENT_SERVICE_IMAGE_NAME=}"
+    },
+    "inventoryMcpImageName": {
+      "value": "${SERVICE_INVENTORY_MCP_IMAGE_NAME=}"
+    },
+    "workOrdersApiImageName": {
+      "value": "${SERVICE_WORK_ORDERS_API_IMAGE_NAME=}"
+    },
+    "statusDashboardImageName": {
+      "value": "${SERVICE_STATUS_DASHBOARD_IMAGE_NAME=}"
     }
   }
 }

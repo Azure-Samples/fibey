@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM mirror.gcr.io/library/node:20-alpine AS build
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+FROM mirror.gcr.io/library/nginx:alpine
 
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

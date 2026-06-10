@@ -1,19 +1,85 @@
+targetScope = 'subscription'
+
+@minLength(1)
+@maxLength(64)
 @description('Unique environment name used for resource naming.')
 param environmentName string
 
-@description('Azure region for all resources.')
-param location string = resourceGroup().location
+@minLength(0)
+@maxLength(90)
+@description('Name of the resource group to use or create. Defaults to rg-<environmentName>.')
+param resourceGroupName string = ''
 
-@description('Tags applied to all resources.')
-param tags object = {
-  'azd-env-name': environmentName
-}
+@minLength(1)
+@description('Primary Azure region for all resources.')
+param location string
+
+@description('Azure region for the AI Foundry account and model deployments. Defaults to the primary location.')
+param aiDeploymentsLocation string = ''
+
+@description('Azure region for the AI Search service. Defaults to the primary location. Override when the primary region is out of search capacity.')
+param searchServiceLocation string = ''
+
+@description('Id of the user or app to assign application roles.')
+param principalId string = ''
+
+@description('Principal type of user or app.')
+param principalType string = 'User'
+
+@description('Optional salt to diversify resource names across project recreations.')
+param resourceTokenSalt string = ''
+
+@description('Optional. Name of the AI Foundry (AI Services) account. If not provided, a name is generated.')
+param aiFoundryResourceName string = ''
+
+@description('Name of the AI Foundry project.')
+param aiFoundryProjectName string = 'fibey-project'
+
+@description('Model deployments requested by the azd AI agent extension (JSON).')
+param aiProjectDeploymentsJson string = '[]'
+
+@description('Project connections requested by the azd AI agent extension (JSON).')
+param aiProjectConnectionsJson string = '[]'
+
+@secure()
+@description('JSON map of connection name to credentials object.')
+param aiProjectConnectionCredentialsJson string = '{}'
+
+@description('Dependent resources requested by the azd AI agent extension (JSON).')
+param aiProjectDependentResourcesJson string = '[]'
+
+@description('Enable hosted agent support (ACR connection + capability host) on the Foundry project.')
+param enableHostedAgents bool = true
+
+@description('Enable the capability host for hosted agents.')
+param enableCapabilityHost bool = true
+
+@description('Enable monitoring (Application Insights) for the Foundry project.')
+param enableMonitoring bool = true
+
+@description('Model deployment name used by the agent and gateway.')
+param foundryModel string = 'gpt-4.1-mini'
+
+@description('Capacity (TPM, in thousands) for the Foundry model deployment.')
+param foundryModelCapacity int = 100
+
+@description('Name of the Foundry Toolbox the agent connects to (created post-provision).')
+param toolboxName string = 'fibey-toolbox'
+
+@description('Name of the AI Search knowledge base (created post-provision).')
+param knowledgeBaseName string = 'fibey-field-ops-kb'
+
+@description('Name of the AI Search index for FoundryIQ documents.')
+param searchIndexName string = 'foundry-iq-docs-index'
 
 @description('Container image for the ui service.')
 param uiImageName string = ''
 
 @description('Container image for the gateway service.')
 param gatewayImageName string = ''
+
+@description('Container image for the agent-service service.')
+param agentServiceImageName string = ''
 
 @description('Container image for the inventory-mcp service.')
 param inventoryMcpImageName string = ''
@@ -24,231 +90,89 @@ param workOrdersApiImageName string = ''
 @description('Container image for the status-dashboard service.')
 param statusDashboardImageName string = ''
 
-@description('Azure AI Foundry project endpoint used by the gateway.')
-param foundryProjectEndpoint string = ''
+var tags = {
+  'azd-env-name': environmentName
+}
 
-@description('Azure AI Foundry model deployment name used by the gateway.')
-param foundryModel string = ''
+var resolvedResourceGroupName = empty(resourceGroupName) ? 'rg-${environmentName}' : resourceGroupName
+var resolvedAiDeploymentsLocation = empty(aiDeploymentsLocation) ? location : aiDeploymentsLocation
+var resolvedSearchServiceLocation = empty(searchServiceLocation) ? location : searchServiceLocation
 
-@description('Foundry Toolbox MCP endpoint used by the gateway.')
-param toolboxMcpUrl string = ''
+resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
+  name: resolvedResourceGroupName
+  location: location
+  tags: tags
+}
 
-var resourceToken = toLower(uniqueString(subscription().subscriptionId, resourceGroup().id, environmentName))
-var sanitizedEnvironmentName = replace(toLower(environmentName), '-', '')
-
-var containerAppsEnvironmentName = '${environmentName}-cae'
-var logAnalyticsWorkspaceName = '${environmentName}-logs'
-var registryName = 'acr${take(sanitizedEnvironmentName, 15)}${take(resourceToken, 8)}'
-var storageAccountName = 'st${take(sanitizedEnvironmentName, 10)}${take(resourceToken, 12)}'
-var searchServiceName = '${environmentName}-search'
-
-var uiAppName = '${environmentName}-ui'
-var gatewayAppName = '${environmentName}-gateway'
-var inventoryMcpAppName = '${environmentName}-inventory-mcp'
-var workOrdersApiAppName = '${environmentName}-work-orders-api'
-var statusDashboardAppName = '${environmentName}-status-dashboard'
-
-module logAnalytics 'modules/log-analytics.bicep' = {
-  name: 'log-analytics'
+module resources 'resources.bicep' = {
+  scope: rg
+  name: 'resources'
   params: {
-    name: logAnalyticsWorkspaceName
+    environmentName: environmentName
     location: location
+    aiDeploymentsLocation: resolvedAiDeploymentsLocation
+    searchServiceLocation: resolvedSearchServiceLocation
     tags: tags
+    principalId: principalId
+    principalType: principalType
+    resourceTokenSalt: resourceTokenSalt
+    aiFoundryResourceName: aiFoundryResourceName
+    aiFoundryProjectName: aiFoundryProjectName
+    aiProjectDeploymentsJson: aiProjectDeploymentsJson
+    aiProjectConnectionsJson: aiProjectConnectionsJson
+    aiProjectConnectionCredentialsJson: aiProjectConnectionCredentialsJson
+    aiProjectDependentResourcesJson: aiProjectDependentResourcesJson
+    enableHostedAgents: enableHostedAgents
+    enableCapabilityHost: enableCapabilityHost
+    enableMonitoring: enableMonitoring
+    foundryModel: foundryModel
+    foundryModelCapacity: foundryModelCapacity
+    toolboxName: toolboxName
+    knowledgeBaseName: knowledgeBaseName
+    searchIndexName: searchIndexName
+    uiImageName: uiImageName
+    gatewayImageName: gatewayImageName
+    agentServiceImageName: agentServiceImageName
+    inventoryMcpImageName: inventoryMcpImageName
+    workOrdersApiImageName: workOrdersApiImageName
+    statusDashboardImageName: statusDashboardImageName
   }
 }
 
-module containerRegistry 'modules/container-registry.bicep' = {
-  name: 'container-registry'
-  params: {
-    name: registryName
-    location: location
-    tags: tags
-  }
-}
+// Resource group and Foundry outputs consumed by the azd AI agent extension
+output AZURE_TENANT_ID string = tenant().tenantId
+output AZURE_RESOURCE_GROUP string = resolvedResourceGroupName
+output AZURE_AI_ACCOUNT_ID string = resources.outputs.aiAccountId
+output AZURE_AI_PROJECT_ID string = resources.outputs.aiProjectId
+output AZURE_AI_FOUNDRY_PROJECT_ID string = resources.outputs.aiProjectId
+output AZURE_AI_ACCOUNT_NAME string = resources.outputs.aiAccountName
+output AZURE_AI_PROJECT_NAME string = resources.outputs.aiProjectName
+output AZURE_AI_PROJECT_ENDPOINT string = resources.outputs.foundryProjectEndpoint
+output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.foundryProjectEndpoint
+output AZURE_OPENAI_ENDPOINT string = resources.outputs.azureOpenAiEndpoint
+output APPLICATIONINSIGHTS_CONNECTION_STRING string = resources.outputs.applicationInsightsConnectionString
+output APPLICATIONINSIGHTS_RESOURCE_ID string = resources.outputs.applicationInsightsResourceId
+output AZURE_AI_PROJECT_ACR_CONNECTION_NAME string = resources.outputs.acrConnectionName
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.registryLoginServer
 
-module storageAccount 'modules/storage-account.bicep' = {
-  name: 'storage-account'
-  params: {
-    name: storageAccountName
-    location: location
-    tags: tags
-  }
-}
+// Agent and toolbox configuration
+output FOUNDRY_MODEL string = foundryModel
+output TOOLBOX_NAME string = toolboxName
+output TOOLBOX_MCP_URL string = resources.outputs.toolboxMcpUrl
+output KB_NAME string = knowledgeBaseName
 
-module aiSearch 'modules/ai-search.bicep' = {
-  name: 'ai-search'
-  params: {
-    name: searchServiceName
-    location: location
-    tags: tags
-    sku: 'basic'
-  }
-}
+// Knowledge base resources
+output AZURE_SEARCH_ENDPOINT string = resources.outputs.searchServiceEndpoint
+output AZURE_SEARCH_INDEX string = searchIndexName
+output searchServiceName string = resources.outputs.searchServiceName
+output searchServiceEndpoint string = resources.outputs.searchServiceEndpoint
+output storageAccountName string = resources.outputs.storageAccountName
 
-// Grant AI Search managed identity "Storage Blob Data Reader" on the storage account
-resource storageAccountRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: storageAccountName
-}
-
-resource searchBlobReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccountRef.id, searchServiceName, 'Storage Blob Data Reader')
-  scope: storageAccountRef
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')
-    principalId: aiSearch.outputs.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-module containerAppsEnvironment 'modules/container-apps-environment.bicep' = {
-  name: 'container-apps-environment'
-  params: {
-    name: containerAppsEnvironmentName
-    location: location
-    logAnalyticsWorkspaceCustomerId: logAnalytics.outputs.customerId
-    logAnalyticsWorkspaceSharedKey: logAnalytics.outputs.sharedKey
-    tags: tags
-  }
-}
-
-module inventoryMcp 'modules/container-app.bicep' = {
-  name: 'inventory-mcp-app'
-  params: {
-    name: inventoryMcpAppName
-    serviceName: 'inventory-mcp'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: inventoryMcpImageName
-    targetPort: 8001
-    env: []
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module workOrdersApi 'modules/container-app.bicep' = {
-  name: 'work-orders-api-app'
-  params: {
-    name: workOrdersApiAppName
-    serviceName: 'work-orders-api'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: workOrdersApiImageName
-    targetPort: 8002
-    env: []
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module statusDashboard 'modules/container-app.bicep' = {
-  name: 'status-dashboard-app'
-  params: {
-    name: statusDashboardAppName
-    serviceName: 'status-dashboard'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: statusDashboardImageName
-    targetPort: 8003
-    env: []
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module gateway 'modules/container-app.bicep' = {
-  name: 'gateway-app'
-  params: {
-    name: gatewayAppName
-    serviceName: 'gateway'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: gatewayImageName
-    targetPort: 8000
-    env: [
-      {
-        name: 'FOUNDRY_PROJECT_ENDPOINT'
-        value: foundryProjectEndpoint
-      }
-      {
-        name: 'FOUNDRY_MODEL'
-        value: foundryModel
-      }
-      {
-        name: 'TOOLBOX_MCP_URL'
-        value: toolboxMcpUrl
-      }
-      {
-        name: 'INVENTORY_MCP_URL'
-        value: 'https://${inventoryMcp.outputs.fqdn}'
-      }
-      {
-        name: 'WORK_ORDERS_API_URL'
-        value: 'https://${workOrdersApi.outputs.fqdn}'
-      }
-      {
-        name: 'STATUS_DASHBOARD_URL'
-        value: 'https://${statusDashboard.outputs.fqdn}'
-      }
-    ]
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-module ui 'modules/container-app.bicep' = {
-  name: 'ui-app'
-  params: {
-    name: uiAppName
-    serviceName: 'ui'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: uiImageName
-    targetPort: 80
-    env: [
-      {
-        name: 'VITE_API_URL'
-        value: '/api'
-      }
-    ]
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
-@description('Fully qualified domain name for the ui container app.')
-output uiFqdn string = ui.outputs.fqdn
-
-@description('Fully qualified domain name for the gateway container app.')
-output gatewayFqdn string = gateway.outputs.fqdn
-
-@description('Fully qualified domain name for the inventory-mcp container app.')
-output inventoryMcpFqdn string = inventoryMcp.outputs.fqdn
-
-@description('Fully qualified domain name for the work-orders-api container app.')
-output workOrdersApiFqdn string = workOrdersApi.outputs.fqdn
-
-@description('Fully qualified domain name for the status-dashboard container app.')
-output statusDashboardFqdn string = statusDashboard.outputs.fqdn
-
-@description('Storage account name for FoundryIQ documents.')
-output storageAccountName string = storageAccount.outputs.name
-
-@description('Azure AI Search service name.')
-output searchServiceName string = aiSearch.outputs.name
-
-@description('Azure AI Search endpoint.')
-output searchServiceEndpoint string = aiSearch.outputs.endpoint
-
-@description('Container registry login server used for service images.')
-output registryLoginServer string = containerRegistry.outputs.loginServer
+// Service endpoints
+output uiFqdn string = resources.outputs.uiFqdn
+output gatewayFqdn string = resources.outputs.gatewayFqdn
+output agentServiceFqdn string = resources.outputs.agentServiceFqdn
+output inventoryMcpFqdn string = resources.outputs.inventoryMcpFqdn
+output workOrdersApiFqdn string = resources.outputs.workOrdersApiFqdn
+output statusDashboardFqdn string = resources.outputs.statusDashboardFqdn
+output registryLoginServer string = resources.outputs.registryLoginServer

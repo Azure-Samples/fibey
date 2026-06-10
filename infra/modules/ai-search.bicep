@@ -27,6 +27,12 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
     replicaCount: 1
     publicNetworkAccess: 'enabled'
     semanticSearch: 'standard'
+    authOptions: {
+      aadOrApiKey: {
+        aadAuthFailureMode: 'http403'
+      }
+    }
+    disableLocalAuth: false
   }
 }
 

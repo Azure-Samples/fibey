@@ -13,6 +13,7 @@ services:
         language: docker
         docker:
             path: ./Dockerfile.agent-service
+            remoteBuild: true
     fibey-agent:
         project: .
         host: azure.ai.agent
@@ -41,31 +42,49 @@ services:
         language: docker
         docker:
             path: ./Dockerfile
+            remoteBuild: true
     inventory-mcp:
         project: services/inventory-mcp
         host: containerapp
         language: docker
         docker:
             path: ./Dockerfile
+            remoteBuild: true
     status-dashboard:
         project: services/status-dashboard
         host: containerapp
         language: docker
         docker:
             path: ./Dockerfile
+            remoteBuild: true
     ui:
         project: ui
         host: containerapp
         language: docker
         docker:
             path: ./Dockerfile
+            remoteBuild: true
     work-orders-api:
         project: services/work-orders-api
         host: containerapp
         language: docker
         docker:
             path: ./Dockerfile
+            remoteBuild: true
 infra:
     provider: bicep
     path: infra
     module: main
+hooks:
+    postdeploy:
+        name: postdeploy
+        kind: sh
+        shell: sh
+        run: ./scripts/setup-toolbox.sh
+        interactive: true
+    postprovision:
+        name: postprovision
+        kind: sh
+        shell: sh
+        run: ./scripts/setup-knowledge-base.sh
+        interactive: true

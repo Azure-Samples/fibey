@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Upload FoundryIQ docs to blob storage and configure the full AI Search + FoundryIQ pipeline.
-# Usage: ./scripts/setup-knowledge-base.sh [foundry-resource-group] [foundry-account-name] [foundry-project-name]
+# Upload FoundryIQ docs to blob storage and configure the AI Search pipeline:
+# data source → index → indexer → knowledge source → knowledge base.
+#
+# The Foundry project connection (kb-<kb-name>) and Search RBAC assignments are
+# created by the Bicep templates in infra/. Runs as part of the azd
+# postprovision hook; safe to re-run (all operations are idempotent PUTs).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -8,117 +12,70 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCS_DIR="$REPO_ROOT/services/foundry-iq-docs/docs"
 
 CONTAINER_NAME="foundry-iq-docs"
-INDEX_NAME="foundry-iq-docs-index"
 DATASOURCE_NAME="foundry-iq-docs-ds"
 INDEXER_NAME="foundry-iq-docs-indexer"
-KB_NAME="fibey-field-ops-kb"
-KS_NAME="fibey-field-ops-ks"
-CONNECTION_NAME="kb-fibey-field-ops-kb"
 
 SEARCH_API_VERSION="2024-07-01"
 KNOWLEDGE_API_VERSION="2026-04-01"
-FOUNDRY_CONNECTION_API_VERSION="2025-10-01-preview"
-SEARCH_INDEX_DATA_READER_ROLE_ID="1407120a-92aa-4202-b7e9-c0e197c71c8f"
 
-FOUNDRY_RESOURCE_GROUP="${1:-${FOUNDRY_RESOURCE_GROUP:-}}"
-FOUNDRY_ACCOUNT_NAME="${2:-${FOUNDRY_ACCOUNT_NAME:-}}"
-FOUNDRY_PROJECT_NAME="${3:-${FOUNDRY_PROJECT_NAME:-}}"
+# ─── Resolve configuration from the azd environment ────────────────────
+env_value() {
+  azd env get-value "$1" 2>/dev/null || echo ""
+}
 
-if [ -z "${AZURE_RESOURCE_GROUP:-}" ]; then
-  echo "AZURE_RESOURCE_GROUP must be set before running this script."
+RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-$(env_value AZURE_RESOURCE_GROUP)}"
+STORAGE_ACCOUNT="${STORAGE_ACCOUNT:-$(env_value storageAccountName)}"
+SEARCH_SERVICE="${SEARCH_SERVICE:-$(env_value searchServiceName)}"
+INDEX_NAME="${AZURE_SEARCH_INDEX:-$(env_value AZURE_SEARCH_INDEX)}"
+INDEX_NAME="${INDEX_NAME:-foundry-iq-docs-index}"
+KB_NAME="${KB_NAME:-$(env_value KB_NAME)}"
+KB_NAME="${KB_NAME:-fibey-field-ops-kb}"
+KS_NAME="${KS_NAME:-fibey-field-ops-ks}"
+
+if [ -z "$RESOURCE_GROUP" ] || [ -z "$STORAGE_ACCOUNT" ] || [ -z "$SEARCH_SERVICE" ]; then
+  echo "Could not resolve resource group, storage account, or search service from the azd environment."
+  echo "Run 'azd provision' first."
   exit 1
 fi
 
-if [ -z "$FOUNDRY_PROJECT_NAME" ] && [ -n "${FOUNDRY_PROJECT_ENDPOINT:-}" ]; then
-  FOUNDRY_PROJECT_NAME="${FOUNDRY_PROJECT_ENDPOINT##*/}"
-fi
-
-# Resolve resource names from azd outputs
-echo "Reading azd outputs..."
-STORAGE_ACCOUNT=$(azd env get-value storageAccountName 2>/dev/null || \
-  az storage account list -g "${AZURE_RESOURCE_GROUP}" --query "[0].name" -o tsv)
-SEARCH_SERVICE=$(azd env get-value searchServiceName 2>/dev/null || \
-  az search service list -g "${AZURE_RESOURCE_GROUP}" --query "[0].name" -o tsv)
 SEARCH_ENDPOINT="https://${SEARCH_SERVICE}.search.windows.net"
 MCP_ENDPOINT="${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}/mcp"
 
-if [ -z "$STORAGE_ACCOUNT" ] || [ -z "$SEARCH_SERVICE" ]; then
-  echo "Could not resolve storage account or search service from azd outputs or Azure CLI."
-  exit 1
-fi
+# Retry helper for transient search-service errors (503s while warming up)
+retry() {
+  local attempts=6 delay=20 i
+  for ((i = 1; i <= attempts; i++)); do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$i" -lt "$attempts" ]; then
+      echo "  Attempt ${i}/${attempts} failed — retrying in ${delay}s..."
+      sleep "$delay"
+    fi
+  done
+  return 1
+}
 
-SEARCH_RESOURCE_ID=$(az search service show \
-  --service-name "$SEARCH_SERVICE" \
-  --resource-group "${AZURE_RESOURCE_GROUP}" \
-  --query id -o tsv)
-
-STORAGE_CONNECTION_STRING=$(az storage account show-connection-string \
+STORAGE_RESOURCE_ID=$(az storage account show \
   --name "$STORAGE_ACCOUNT" \
-  --query connectionString -o tsv)
+  --resource-group "$RESOURCE_GROUP" \
+  --query id -o tsv)
 
 SEARCH_ADMIN_KEY="${AZURE_SEARCH_ADMIN_KEY:-}"
 if [ -z "$SEARCH_ADMIN_KEY" ]; then
   SEARCH_ADMIN_KEY=$(az search admin-key show \
     --service-name "$SEARCH_SERVICE" \
-    --resource-group "${AZURE_RESOURCE_GROUP}" \
+    --resource-group "$RESOURCE_GROUP" \
     --query primaryKey -o tsv)
 fi
 
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-if [ -z "$FOUNDRY_RESOURCE_GROUP" ] || [ -z "$FOUNDRY_ACCOUNT_NAME" ]; then
-  echo "FOUNDRY_RESOURCE_GROUP and FOUNDRY_ACCOUNT_NAME must be set (or passed as the first two arguments)."
-  exit 1
-fi
-
-if [ -n "$FOUNDRY_PROJECT_NAME" ]; then
-  FOUNDRY_PROJECT_RESOURCE_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${FOUNDRY_RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/${FOUNDRY_ACCOUNT_NAME}/projects/${FOUNDRY_PROJECT_NAME}"
-else
-  FOUNDRY_PROJECT_RESOURCE_ID=$(az resource list \
-    --resource-group "$FOUNDRY_RESOURCE_GROUP" \
-    --namespace Microsoft.MachineLearningServices \
-    --query "[?type=='Microsoft.MachineLearningServices/workspaces/projects' && contains(id, '/workspaces/${FOUNDRY_ACCOUNT_NAME}/projects/')].id | [0]" \
-    -o tsv)
-fi
-
-if [ -z "$FOUNDRY_PROJECT_RESOURCE_ID" ]; then
-  echo "Could not resolve a Foundry project resource ID. Set FOUNDRY_PROJECT_NAME or FOUNDRY_PROJECT_ENDPOINT."
-  exit 1
-fi
-
-if [ -z "$FOUNDRY_PROJECT_NAME" ]; then
-  FOUNDRY_PROJECT_NAME="${FOUNDRY_PROJECT_RESOURCE_ID##*/}"
-fi
-
-FOUNDRY_MI_PRINCIPAL_ID=$(az resource show \
-  --ids "$FOUNDRY_PROJECT_RESOURCE_ID" \
-  --api-version "$FOUNDRY_CONNECTION_API_VERSION" \
-  --query identity.principalId -o tsv)
-
-if [ -z "$FOUNDRY_MI_PRINCIPAL_ID" ]; then
-  FOUNDRY_MI_PRINCIPAL_ID=$(az resource show \
-    --ids "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${FOUNDRY_RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/${FOUNDRY_ACCOUNT_NAME}" \
-    --api-version "$FOUNDRY_CONNECTION_API_VERSION" \
-    --query identity.principalId -o tsv)
-fi
-
-if [ -z "$FOUNDRY_MI_PRINCIPAL_ID" ]; then
-  echo "Could not resolve the Foundry managed identity principal ID for RBAC assignment."
-  exit 1
-fi
-
-ROLE_DEFINITION_ID="/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.Authorization/roleDefinitions/${SEARCH_INDEX_DATA_READER_ROLE_ID}"
-MANAGEMENT_TOKEN=$(az account get-access-token \
-  --scope https://management.azure.com/.default \
-  --query accessToken -o tsv)
-
 echo ""
-echo "Storage Account       : $STORAGE_ACCOUNT"
-echo "Search Service        : $SEARCH_SERVICE"
-echo "Search Endpoint       : $SEARCH_ENDPOINT"
-echo "Foundry Resource Group: $FOUNDRY_RESOURCE_GROUP"
-echo "Foundry Account       : $FOUNDRY_ACCOUNT_NAME"
-echo "Foundry Project       : $FOUNDRY_PROJECT_NAME"
+echo "Resource Group  : $RESOURCE_GROUP"
+echo "Storage Account : $STORAGE_ACCOUNT"
+echo "Search Service  : $SEARCH_SERVICE"
+echo "Search Endpoint : $SEARCH_ENDPOINT"
+echo "Index           : $INDEX_NAME"
+echo "Knowledge Base  : $KB_NAME"
 echo ""
 
 # ─── 1. Upload documents ───────────────────────────────────────────────
@@ -127,33 +84,34 @@ az storage blob upload-batch \
   --source "$DOCS_DIR" \
   --destination "$CONTAINER_NAME" \
   --account-name "$STORAGE_ACCOUNT" \
-  --auth-mode key \
+  --auth-mode login \
   --overwrite \
-  --no-progress
+  --no-progress \
+  --only-show-errors >/dev/null
 echo "✓ Uploaded $(find "$DOCS_DIR" -maxdepth 1 -type f | wc -l | tr -d ' ') documents"
 
 # ─── 2. Create data source ─────────────────────────────────────────────
 echo ""
 echo "=== Creating search data source ==="
-curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/datasources/${DATASOURCE_NAME}?api-version=${SEARCH_API_VERSION}" \
+retry curl --fail-with-body -sS -o /dev/null -X PUT "${SEARCH_ENDPOINT}/datasources/${DATASOURCE_NAME}?api-version=${SEARCH_API_VERSION}" \
   -H "Content-Type: application/json" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
   -d "{
     \"name\": \"${DATASOURCE_NAME}\",
     \"type\": \"azureblob\",
     \"credentials\": {
-      \"connectionString\": \"${STORAGE_CONNECTION_STRING}\"
+      \"connectionString\": \"ResourceId=${STORAGE_RESOURCE_ID};\"
     },
     \"container\": {
       \"name\": \"${CONTAINER_NAME}\"
     }
-  }" | python3 -m json.tool
+  }"
 echo "✓ Data source created"
 
 # ─── 3. Create search index ────────────────────────────────────────────
 echo ""
 echo "=== Creating search index ==="
-curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${SEARCH_API_VERSION}" \
+retry curl --fail-with-body -sS -o /dev/null -X PUT "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${SEARCH_API_VERSION}" \
   -H "Content-Type: application/json" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
   -d "{
@@ -176,13 +134,13 @@ curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-v
       ],
       \"defaultConfiguration\": \"default\"
     }
-  }" | python3 -m json.tool
+  }"
 echo "✓ Index created"
 
 # ─── 4. Create indexer ─────────────────────────────────────────────────
 echo ""
 echo "=== Creating search indexer ==="
-curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}?api-version=${SEARCH_API_VERSION}" \
+retry curl --fail-with-body -sS -o /dev/null -X PUT "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}?api-version=${SEARCH_API_VERSION}" \
   -H "Content-Type: application/json" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
   -d "{
@@ -205,17 +163,15 @@ curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}?ap
       }
     },
     \"schedule\": null
-  }" | python3 -m json.tool
+  }"
 echo "✓ Indexer created"
 
 # ─── 5. Run indexer ────────────────────────────────────────────────────
 echo ""
 echo "=== Running indexer ==="
-curl --fail-with-body -sS -X POST "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}/run?api-version=${SEARCH_API_VERSION}" \
+curl -sS -o /dev/null -X POST "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}/run?api-version=${SEARCH_API_VERSION}" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
-  -H "Content-Length: 0" \
-  -w "HTTP %{http_code}"
-echo ""
+  -H "Content-Length: 0"
 echo "✓ Indexer triggered — documents will be indexed shortly"
 
 # ─── 6. Check status ───────────────────────────────────────────────────
@@ -227,7 +183,7 @@ STATUS=$(curl --fail-with-body -sS "${SEARCH_ENDPOINT}/indexers/${INDEXER_NAME}/
 echo "$STATUS" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-hist = d.get('lastResult', {})
+hist = d.get('lastResult') or {}
 print(f\"Status: {hist.get('status', 'unknown')}\")
 print(f\"Items processed: {hist.get('itemsProcessed', 0)}\")
 print(f\"Items failed: {hist.get('itemsFailed', 0)}\")
@@ -236,7 +192,7 @@ print(f\"Items failed: {hist.get('itemsFailed', 0)}\")
 # ─── 7. Create knowledge source ────────────────────────────────────────
 echo ""
 echo "=== Creating knowledge source ==="
-curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/knowledgesources/${KS_NAME}?api-version=${KNOWLEDGE_API_VERSION}" \
+retry curl --fail-with-body -sS -o /dev/null -X PUT "${SEARCH_ENDPOINT}/knowledgesources/${KS_NAME}?api-version=${KNOWLEDGE_API_VERSION}" \
   -H "Content-Type: application/json" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
   -d "{
@@ -255,13 +211,13 @@ curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/knowledgesources/${KS_NAME}
         { \"name\": \"content\" }
       ]
     }
-  }" | python3 -m json.tool
+  }"
 echo "✓ Knowledge source created"
 
 # ─── 8. Create knowledge base ──────────────────────────────────────────
 echo ""
 echo "=== Creating knowledge base ==="
-curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}?api-version=${KNOWLEDGE_API_VERSION}" \
+retry curl --fail-with-body -sS -o /dev/null -X PUT "${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}?api-version=${KNOWLEDGE_API_VERSION}" \
   -H "Content-Type: application/json" \
   -H "api-key: ${SEARCH_ADMIN_KEY}" \
   -d "{
@@ -271,61 +227,13 @@ curl --fail-with-body -sS -X PUT "${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}?a
       { \"name\": \"${KS_NAME}\" }
     ],
     \"encryptionKey\": null
-  }" | python3 -m json.tool
+  }"
 echo "✓ Knowledge base created"
 
-# ─── 9. Create Foundry connection ──────────────────────────────────────
 echo ""
-echo "=== Creating Foundry connection ==="
-curl --fail-with-body -sS -X PUT "https://management.azure.com${FOUNDRY_PROJECT_RESOURCE_ID}/connections/${CONNECTION_NAME}?api-version=${FOUNDRY_CONNECTION_API_VERSION}" \
-  -H "Authorization: Bearer ${MANAGEMENT_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"name\": \"${CONNECTION_NAME}\",
-    \"type\": \"Microsoft.MachineLearningServices/workspaces/connections\",
-    \"properties\": {
-      \"authType\": \"ProjectManagedIdentity\",
-      \"category\": \"RemoteTool\",
-      \"target\": \"${MCP_ENDPOINT}\",
-      \"isSharedToAll\": true,
-      \"audience\": \"https://search.azure.com/\",
-      \"metadata\": {
-        \"ApiType\": \"Azure\"
-      }
-    }
-  }" | python3 -m json.tool
-echo "✓ Foundry connection created"
-
-# ─── 10. Assign RBAC ───────────────────────────────────────────────────
-echo ""
-echo "=== Assigning Search Index Data Reader RBAC ==="
-EXISTING_ASSIGNMENT=$(az role assignment list \
-  --assignee-object-id "$FOUNDRY_MI_PRINCIPAL_ID" \
-  --scope "$SEARCH_RESOURCE_ID" \
-  --query "[?roleDefinitionId=='${ROLE_DEFINITION_ID}'].id | [0]" \
-  -o tsv)
-
-if [ -n "$EXISTING_ASSIGNMENT" ]; then
-  echo "✓ Search Index Data Reader already assigned"
-else
-  az role assignment create \
-    --assignee-object-id "$FOUNDRY_MI_PRINCIPAL_ID" \
-    --assignee-principal-type ServicePrincipal \
-    --role "$SEARCH_INDEX_DATA_READER_ROLE_ID" \
-    --scope "$SEARCH_RESOURCE_ID" \
-    --only-show-errors >/dev/null
-  echo "✓ Search Index Data Reader assigned"
-fi
-
-echo ""
-echo "=== Done ==="
-echo "Search endpoint   : ${SEARCH_ENDPOINT}"
-echo "Index name        : ${INDEX_NAME}"
-echo "Knowledge source  : ${KS_NAME}"
-echo "Knowledge base    : ${KB_NAME}"
-echo "Foundry connection: ${CONNECTION_NAME}"
-echo "MCP endpoint      : ${MCP_ENDPOINT}"
-echo ""
-echo "Set these in your azd environment:"
-echo "  azd env set AZURE_SEARCH_ENDPOINT \"${SEARCH_ENDPOINT}\""
-echo "  azd env set KB_NAME \"${KB_NAME}\""
+echo "=== Knowledge base ready ==="
+echo "Search endpoint : ${SEARCH_ENDPOINT}"
+echo "Index name      : ${INDEX_NAME}"
+echo "Knowledge source: ${KS_NAME}"
+echo "Knowledge base  : ${KB_NAME}"
+echo "MCP endpoint    : ${MCP_ENDPOINT}"
