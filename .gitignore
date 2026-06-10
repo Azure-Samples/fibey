@@ -427,3 +427,16 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Frontend build output
+dist/
+
+.DS_Store
+*.DS_Store
+.env.copy

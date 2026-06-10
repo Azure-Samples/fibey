@@ -1,0 +1,6 @@
+agent-framework>=1.4.0
+agent-framework-foundry-hosting
+azure-identity
+httpx
+mcp
+python-dotenv
