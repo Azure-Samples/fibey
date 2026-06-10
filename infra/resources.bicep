@@ -452,6 +452,15 @@ module ui 'modules/container-app.bicep' = {
         name: 'VITE_API_URL'
         value: '/api'
       }
+      {
+        // nginx proxies /api/ to the gateway (see ui/nginx.conf)
+        name: 'GATEWAY_URL'
+        value: 'https://${gateway.outputs.fqdn}/api/'
+      }
+      {
+        name: 'GATEWAY_HOST'
+        value: gateway.outputs.fqdn
+      }
     ]
     registryServer: containerRegistry.outputs.loginServer
     registryUsername: containerRegistry.outputs.username

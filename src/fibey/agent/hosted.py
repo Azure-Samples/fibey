@@ -99,6 +99,9 @@ def main() -> None:
     tools: list = []
     toolbox_url = os.environ.get("TOOLBOX_MCP_URL", "")
     if toolbox_url:
+        if "api-version" not in toolbox_url:
+            separator = "&" if "?" in toolbox_url else "?"
+            toolbox_url = f"{toolbox_url}{separator}api-version=v1"
         logger.info("Registering Toolbox MCP: %s", toolbox_url[:80])
         token_provider = get_bearer_token_provider(
             credential, "https://ai.azure.com/.default"
