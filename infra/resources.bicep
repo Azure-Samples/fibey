@@ -129,7 +129,7 @@ var workOrdersApiAppName = '${environmentName}-work-orders-api'
 var statusDashboardAppName = '${environmentName}-status-dashboard'
 
 var searchEndpoint = 'https://${searchServiceName}.search.windows.net'
-var knowledgeBaseMcpEndpoint = '${searchEndpoint}/knowledgebases/${knowledgeBaseName}/mcp'
+var knowledgeBaseMcpEndpoint = '${searchEndpoint}/knowledgebases/${knowledgeBaseName}/mcp?api-version=2026-05-01-preview'
 var kbConnectionName = 'kb-${knowledgeBaseName}'
 
 // Built-in role definition IDs
@@ -475,6 +475,16 @@ module agentServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
   params: {
     aiAccountName: aiProject.outputs.aiServicesAccountName
     principalId: agentService.outputs.principalId
+  }
+}
+
+// The search service managed identity calls the Azure OpenAI deployment for
+// knowledge base query planning and answer synthesis.
+module searchServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
+  name: 'search-service-ai-roles'
+  params: {
+    aiAccountName: aiProject.outputs.aiServicesAccountName
+    principalId: aiSearch.outputs.principalId
   }
 }
 

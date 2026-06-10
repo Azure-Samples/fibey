@@ -25,7 +25,7 @@ if [ -z "$PROJECT_ENDPOINT" ] || [ -z "$INVENTORY_FQDN" ] || [ -z "$WORK_ORDERS_
   exit 1
 fi
 
-KB_MCP_ENDPOINT="${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}/mcp"
+KB_MCP_ENDPOINT="${SEARCH_ENDPOINT}/knowledgebases/${KB_NAME}/mcp?api-version=2026-05-01-preview"
 
 echo ""
 echo "Foundry project : $PROJECT_ENDPOINT"

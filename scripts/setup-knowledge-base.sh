@@ -16,7 +16,10 @@ DATASOURCE_NAME="foundry-iq-docs-ds"
 INDEXER_NAME="foundry-iq-docs-indexer"
 
 SEARCH_API_VERSION="2024-07-01"
-KNOWLEDGE_API_VERSION="2026-04-01"
+# 2026-05-01-preview is required for query planning / answer synthesis with an
+# LLM on non-web knowledge sources (the toolbox calls the KB MCP endpoint with
+# reasoning effort above minimal, which needs a model attached).
+KNOWLEDGE_API_VERSION="2026-05-01-preview"
 
 # ─── Resolve configuration from the azd environment ────────────────────
 env_value() {
@@ -31,6 +34,9 @@ INDEX_NAME="${INDEX_NAME:-foundry-iq-docs-index}"
 KB_NAME="${KB_NAME:-$(env_value KB_NAME)}"
 KB_NAME="${KB_NAME:-fibey-field-ops-kb}"
 KS_NAME="${KS_NAME:-fibey-field-ops-ks}"
+AOAI_ENDPOINT="${AZURE_OPENAI_ENDPOINT:-$(env_value AZURE_OPENAI_ENDPOINT)}"
+FOUNDRY_MODEL="${FOUNDRY_MODEL:-$(env_value FOUNDRY_MODEL)}"
+FOUNDRY_MODEL="${FOUNDRY_MODEL:-gpt-4.1-mini}"
 
 if [ -z "$RESOURCE_GROUP" ] || [ -z "$STORAGE_ACCOUNT" ] || [ -z "$SEARCH_SERVICE" ]; then
   echo "Could not resolve resource group, storage account, or search service from the azd environment."
@@ -226,6 +232,17 @@ retry curl --fail-with-body -sS -o /dev/null -X PUT "${SEARCH_ENDPOINT}/knowledg
     \"knowledgeSources\": [
       { \"name\": \"${KS_NAME}\" }
     ],
+    \"models\": [
+      {
+        \"kind\": \"azureOpenAI\",
+        \"azureOpenAIParameters\": {
+          \"resourceUri\": \"${AOAI_ENDPOINT}\",
+          \"deploymentId\": \"${FOUNDRY_MODEL}\",
+          \"modelName\": \"${FOUNDRY_MODEL}\"
+        }
+      }
+    ],
+    \"retrievalReasoningEffort\": { \"kind\": \"low\" },
     \"encryptionKey\": null
   }"
 echo "✓ Knowledge base created"
