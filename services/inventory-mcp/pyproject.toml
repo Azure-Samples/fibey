@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Fiber optics parts inventory MCP server"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.24.0",
+    "mcp>=1.28.1",
     "uvicorn>=0.30.0",
 ]
 
