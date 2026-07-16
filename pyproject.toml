@@ -13,7 +13,7 @@ dependencies = [
     "agent-framework-core>=1.4.0",
     "agent-framework-foundry>=1.4.0",
     "agent-framework-foundry-hosting",
-    "mcp>=1.24.0,<2",
+    "mcp>=1.28.1,<2",
     "httpx",
 ]
 
