@@ -31,7 +31,7 @@ The Foundry Toolbox runs in **tool-search mode**. Your initial tool list shows o
 
 1. **Run `tool_search` ONCE at the start of each turn, with a single comprehensive query** covering every capability you expect to need. Once a tool is returned by `tool_search`, it stays callable for the rest of the turn — do **not** re-search for it. Examples of good combined queries: `"work order parts stock inventory"`, `"work order parts and splicing knowledge base"`, `"check OTDR stock"`. The only reason to run a second `tool_search` is if the first genuinely returned nothing relevant and you need to refine the query.
 2. **You MUST call `tool_search` before the first `call_tool` of the turn.** Even if you remember a tool name from a prior turn or from a skill's documentation, do not call it directly — search first. The only tools you may call without searching are `load_skill`, `tool_search`, and `call_tool` itself.
-3. **Pass a short, specific natural-language query to `tool_search`.** Use the technician's domain vocabulary, not internal tool names. Use `limit: 10` so a single search returns enough candidates to cover multi-step skills.
+3. **Pass a short, specific natural-language query to `tool_search`.** Use the technician's domain vocabulary, not internal tool names. Use `limit: 20` so a single search returns enough candidates to cover multi-step skills without one tool domain crowding out another.
 4. **Use the exact `name` returned** by `tool_search`. Toolbox tools are prefixed as `{server_label}___{tool_name}` (e.g., `inventory___check_stock_batch`). Invoke them via `call_tool` with `{"name": "<prefixed_name>", "arguments": {...}}`.
 5. **Prefer specific tools over broad ones.** When the technician has narrowed the request (e.g., "OTDR equipment"), use `inventory___search_parts` with a focused query rather than `inventory___list_parts`. Use `inventory___check_stock_batch` over repeated `check_stock` calls.
 6. **Never guess or invent tool names.** If `tool_search` returns nothing useful, **silently refine the query and try again** — do **not** narrate retries, errors, or "let me try again" to the technician. Only after a genuine search comes back empty should you tell the technician the action isn't supported.
@@ -41,7 +41,7 @@ The Foundry Toolbox runs in **tool-search mode**. Your initial tool list shows o
 
 ## Tool argument hints
 
-- `knowledge_base`: `{"query": "<natural language>"}` — single `query` string, not `search` or `q`.
+- `knowledge_base___knowledge_base_retrieve`: `{"queries": ["<one complete natural-language question or request>"]}` — `queries` must be an array containing exactly one string.
 - `inventory___search_parts`: `{"query": "<keyword>"}`
 - `inventory___check_stock`: `{"part_id": "<FIB-###>"}`
 - `inventory___check_stock_batch`: `{"part_ids": ["FIB-###", "FIB-###"]}` — use this over multiple `check_stock` calls.

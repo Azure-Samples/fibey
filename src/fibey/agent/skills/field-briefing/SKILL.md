@@ -24,17 +24,17 @@ This skill uses **three** capabilities from the Foundry Toolbox in sequence:
 |---|---|---|
 | 1 | Get the work order | `work_orders___get_work_order_work_orders__work_order_id__get` |
 | 2 | Check stock for the parts list | `inventory___check_stock_batch` |
-| 3 | Search procedures & safety | `knowledge_base` |
+| 3 | Search procedures & safety | `knowledge_base___knowledge_base_retrieve` |
 
 ### Step 0: Discover tools (REQUIRED before first call this turn)
 
-If any of these tools isn't already visible in your tool list, run **one** combined `tool_search` with **`limit: 10`**:
+If any of these tools isn't already visible in your tool list, run **one** combined `tool_search` with **`limit: 20`**:
 
 ```
-tool_search({"query": "work order parts stock knowledge base", "limit": 10})
+tool_search({"query": "work order parts stock knowledge base", "limit": 20})
 ```
 
-**Never** run one search per capability — a single combined query with `limit: 10` returns all needed tools, and they stay callable for the rest of the turn.
+**Never** run one search per capability — a single combined query with `limit: 20` returns all needed tools, and they stay callable for the rest of the turn.
 
 ## Step-by-Step Instructions
 
@@ -52,12 +52,15 @@ Classify each as ✅ Ready, ⚠️ Partial, or ❌ Unavailable.
 
 ### Step 3: Search the Knowledge Base
 
-Call `knowledge_base` via `call_tool` with `{"query": "<combined query>"}`.
+Call the exact knowledge-base tool returned by `tool_search` (normally
+`knowledge_base___knowledge_base_retrieve`) via `call_tool` with
+`{"queries": ["<one complete combined question or request>"]}`.
 
 Based on the work order's job type, search for relevant procedures **and** safety protocols.
 
-**IMPORTANT: Make exactly ONE `knowledge_base` call** with a combined query that covers both the procedure and safety info. For example:
-_"fusion splice procedure and safety protocols for aerial fiber work"_
+**IMPORTANT: Make exactly ONE knowledge-base call** with a complete natural-language
+request that covers both the procedure and safety info. For example:
+_"Give me the fusion splice procedure and safety protocols for aerial fiber work."_
 
 Do NOT make separate calls for procedures and safety — combine them into a single query. This is more efficient and avoids redundant lookups.
 

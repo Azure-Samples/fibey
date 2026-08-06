@@ -31,24 +31,25 @@ The knowledge base contains 8 reference documents:
 
 ## Tools Used by This Skill
 
-This skill calls the **`knowledge_base`** tool (Foundry-managed Azure AI Search, no prefix).
+This skill calls the Foundry-managed Azure AI Search retrieval tool.
 
-- Tool name: `knowledge_base`
-- Argument shape: `{"query": "<natural-language question>"}`  (single `query` string — never `search`, `q`, or `question`).
-- Discovery: if `knowledge_base` is not already visible in your tool list, run `tool_search({"query": "knowledge base", "limit": 10})` once. Tools returned by `tool_search` stay callable for the rest of the turn.
+- Tool name: use the exact name returned by `tool_search` (normally `knowledge_base___knowledge_base_retrieve`).
+- Argument shape: `{"queries": ["<one complete natural-language question or request>"]}`. The `queries` array must contain exactly one string.
+- Discovery: if the knowledge-base tool is not already visible in your tool list, run `tool_search({"query": "knowledge base", "limit": 20})` once. Tools returned by `tool_search` stay callable for the rest of the turn.
 
 ## Step-by-Step Instructions
 
 ### Step 1: Search the Knowledge Base
 
-Call `knowledge_base` via `call_tool` **exactly once** with a clear query derived from the technician's question.
+Call the knowledge-base tool via `call_tool` **exactly once** with a complete
+natural-language question or request derived from the technician's question.
 
 | Question Pattern | Query to Send |
 |-----------------|---------------|
-| How to do X | "procedure for {X}" |
-| Safety for X | "safety protocols for {X}" |
-| Troubleshoot X | "troubleshooting {X}" |
-| Specs for X | "specifications for {X}" |
+| How to do X | "What is the documented procedure for {X}?" |
+| Safety for X | "What are the documented safety protocols for {X}?" |
+| Troubleshoot X | "How should I troubleshoot {X} using the documented guidance?" |
+| Specs for X | "What are the documented specifications for {X}?" |
 | Multi-topic | Send the full question as-is |
 
 **CRITICAL: Always make exactly ONE knowledge base call, never multiple.**
