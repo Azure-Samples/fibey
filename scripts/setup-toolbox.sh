@@ -98,6 +98,7 @@ body = {
         },
         {
             'type': 'openapi',
+            'name': 'work_orders',
             'openapi': {
                 'name': 'work_orders',
                 'spec': work_orders_spec,
@@ -120,9 +121,13 @@ RESPONSE=$(curl --fail-with-body -sS -X POST \
   "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions?api-version=v1" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$BODY")
+  -d "$BODY") || {
+    echo "Toolbox version creation failed:" >&2
+    echo "$RESPONSE" | python3 -m json.tool >&2 || echo "$RESPONSE" >&2
+    exit 1
+  }
 
-echo "$RESPONSE" | python3 -m json.tool | head -20
+echo "$RESPONSE" | python3 -m json.tool | sed -n '1,20p'
 
 # ─── Promote the new version to default ────────────────────────────────
 NEW_VERSION=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])")

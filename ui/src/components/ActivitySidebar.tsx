@@ -170,6 +170,13 @@ function shortenToolName(raw: string): string {
   return name;
 }
 
+function fallbackToolDescription(raw: string): string {
+  if (raw.toLowerCase().includes("knowledge_base_retrieve")) {
+    return "Retrieve authoritative procedures, safety guidance, and troubleshooting documentation.";
+  }
+  return "";
+}
+
 /** Try to extract context like WO ID from the detail field */
 function extractDetailContext(activity: ActivityEvent): Array<[string, string]> | null {
   const detail = activity.detail ?? "";
@@ -292,8 +299,6 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
             <div className="absolute left-[15px] top-2 bottom-2 w-px bg-gray-200 dark:bg-gray-700" />
 
             {(() => {
-              // Build set of tool names that were actually invoked in this turn so
-              // we can mark tool_search results that the model chose to use.
               const invokedToolNames = new Set(
                 activities
                   .map((a) => a.tool)
@@ -305,6 +310,7 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                       t !== "load_skill",
                   ),
               );
+              const invokedTools = Array.from(invokedToolNames);
               return activities.map((activity) => {
               const tool = parseToolInfo(activity.tool);
               const status = statusMeta(activity.status);
@@ -337,13 +343,13 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                           {tool.name}
                         </span>
                         {activity.tool === "tool_search" && activity.results && activity.results.length > 0 && (() => {
-                          const usedCount = activity.results.filter((r) => invokedToolNames.has(r.name)).length;
+                          const selectedCount = invokedTools.length;
                           return (
                             <span
                               className="inline-flex items-center gap-0.5 rounded bg-indigo-50 px-1 py-0.5 text-[10px] font-medium text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"
-                              title={`${usedCount} of ${activity.results.length} returned tools were used`}
+                              title={`${selectedCount} tools selected`}
                             >
-                              {usedCount > 0 ? `${usedCount} selected` : `${activity.results.length} found`}
+                              {selectedCount} selected
                             </span>
                           );
                         })()}
@@ -396,19 +402,23 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                               ))}
                             </div>
                           )}
-                          {/* tool_search results — only show ones the model actually used */}
+                          {/* Tools selected after discovery */}
                           {activity.tool === "tool_search" && activity.results && activity.results.length > 0 && (() => {
-                            const usedResults = activity.results.filter((r) => invokedToolNames.has(r.name));
-                            const totalCount = activity.results.length;
+                            const returnedByName = new Map(activity.results.map((r) => [r.name, r]));
+                            const selectedResults = invokedTools.map(
+                              (name) =>
+                                returnedByName.get(name) ?? {
+                                  name,
+                                  description: fallbackToolDescription(name),
+                                },
+                            );
                             return (
                               <div className="space-y-1 border-t border-gray-100 pt-1.5 dark:border-gray-700">
                                 <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                                  {usedResults.length > 0
-                                    ? `Selected (${usedResults.length} of ${totalCount})`
-                                    : `Returned ${totalCount}, none used yet`}
+                                  Selected {selectedResults.length}
                                 </div>
                                 <div className="space-y-1">
-                                  {usedResults.map((r) => (
+                                  {selectedResults.map((r) => (
                                     <div
                                       key={r.name}
                                       className="rounded border border-green-200 bg-green-50 px-2 py-1 dark:border-green-700/50 dark:bg-green-900/20"

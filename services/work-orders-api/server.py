@@ -117,7 +117,11 @@ def list_work_orders(
     return work_orders
 
 
-@app.get("/work-orders/{work_order_id}", response_model=WorkOrder)
+@app.get(
+    "/work-orders/{work_order_id}",
+    response_model=WorkOrder,
+    summary="Retrieve work order details by ID",
+)
 def get_work_order(work_order_id: str) -> WorkOrder:
     _, work_order = find_work_order(work_order_id)
     return work_order

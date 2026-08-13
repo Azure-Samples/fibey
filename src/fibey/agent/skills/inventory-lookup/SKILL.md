@@ -30,16 +30,16 @@ All inventory capabilities live in the Foundry Toolbox under the `inventory` MCP
 
 ### Step 0: Discover tools (REQUIRED before first inventory call this turn)
 
-If the inventory tools aren't already visible in your tool list, call `tool_search` **once** with **`limit: 10`**. Use a query made from the technician's own domain terms — the toolbox is indexed with fiber-tech vocabulary so terms like `"OTDR"`, `"splicer"`, `"VFL"`, `"connector"`, `"patch cord"`, `"splice tray"`, `"test equipment"` all match inventory tools directly.
+If the inventory tools aren't already visible in your tool list, call `tool_search` **once** with **`limit: 10`**. Describe both the capability and the technician's domain terms so discovery requests rank the catalog search tool above stock tools that require known IDs.
 
 Examples:
-- "OTDR stock?" → `tool_search({"query": "OTDR", "limit": 10})`
-- "do we have SC connectors?" → `tool_search({"query": "SC connector", "limit": 10})`
+- "OTDR stock?" → `tool_search({"query": "search inventory catalog for OTDR models and stock", "limit": 10})`
+- "do we have SC connectors?" → `tool_search({"query": "search inventory catalog for SC connectors", "limit": 10})`
 - generic "check parts" → `tool_search({"query": "inventory parts stock", "limit": 10})`
 
-Always pass `limit: 10` so all inventory tools surface. The returned tools stay callable for the rest of the turn — do not call `tool_search` again for inventory in this turn.
+Always pass `limit: 10` so all inventory tools surface. The returned tools stay callable for the rest of the turn.
 
-If `tool_search` returns `"No tools matched"`, fall back to invoking inventory tools directly via `call_tool` with their prefixed names from the table above — the tools exist regardless of search results.
+If a free-text discovery request does not return `search_parts`, refine discovery once with `tool_search({"query": "search inventory catalog by equipment name and description", "limit": 10})`. Do not invoke an undiscovered tool, and do not substitute `check_stock` or `check_stock_batch`; those require real part IDs. If `search_parts` is still unavailable, report that live inventory search could not be retrieved rather than claiming there are no matching parts.
 
 ### Step 1: Choose the Right Tool
 
@@ -52,6 +52,13 @@ If `tool_search` returns `"No tools matched"`, fall back to invoking inventory t
 | Stock levels for multiple parts | `inventory___check_stock_batch` with `part_ids` list | "check stock for FIB-003 and FIB-012" |
 
 Invoke each tool via `call_tool` with `{"name": "<prefixed_name>", "arguments": {...}}`.
+
+`search_parts` results already include stock quantity, status, location, price, and manufacturer. For model-availability questions, format that result directly without follow-up stock calls.
+
+Before answering, inspect the returned `count` and `parts` fields:
+- If `count > 0`, report every returned part and copy its stock values exactly.
+- Say no models are available only when a successful result explicitly has `count: 0` and `parts: []`.
+- Treat errors, missing fields, or malformed content as retrieval failures, not as zero inventory.
 
 **Categories available:** Connectors, Cables, Splitters, Splice Equipment, Test Equipment
 
@@ -104,3 +111,5 @@ Always show a status indicator:
 - ❌ Do not use knowledge base tools for inventory questions
 - ❌ Do not invent part IDs or SKUs
 - ❌ Do not list multiple items as a flat paragraph — always use tables
+- ❌ Do not call stock tools without part IDs from the user, a work order, or `search_parts`
+- ❌ Do not repeat the same tool call; correct one validation error at most, then stop

@@ -52,7 +52,10 @@ def _part_summary(part: dict[str, Any]) -> dict[str, Any]:
 
 
 @server.tool(
-    description="List all fiber optic inventory parts, optionally filtered by category.",
+    description=(
+        "Browse the fiber optic inventory catalog, optionally filtered by category. "
+        "Use this to discover available parts or equipment when no part ID is known."
+    ),
 )
 def list_parts(category: str | None = None) -> dict[str, Any]:
     """Return part summaries for the full catalog or a single category."""
@@ -70,7 +73,11 @@ def list_parts(category: str | None = None) -> dict[str, Any]:
 
 
 @server.tool(
-    description="Search fiber optic parts by name or description using a free-text query.",
+    description=(
+        "Search the inventory catalog by equipment name, model, category, or description. "
+        "Use this first to discover matching part IDs, models, prices, and current stock "
+        "for requests such as OTDRs, splicers, connectors, or test equipment."
+    ),
 )
 def search_parts(query: str) -> dict[str, Any]:
     """Return matching part summaries for a case-insensitive search query."""
@@ -102,7 +109,10 @@ def get_part_details(part_id: str) -> dict[str, Any]:
 
 
 @server.tool(
-    description="Check the current stock level and status for a part.",
+    description=(
+        "Check current stock for one known part ID such as FIB-016. "
+        "Do not use this tool to discover equipment models or part IDs."
+    ),
 )
 def check_stock(part_id: str) -> dict[str, Any]:
     """Return stock quantity, reorder threshold, and inventory status for a part."""
@@ -118,7 +128,10 @@ def check_stock(part_id: str) -> dict[str, Any]:
 
 
 @server.tool(
-    description="Check stock levels for multiple parts at once. Use this instead of repeated check_stock calls when you need to verify availability for a list of parts (e.g. all parts on a work order).",
+    description=(
+        "Check stock for multiple known part IDs in one call, such as a work-order parts "
+        "list. Requires part_ids; do not use this tool to discover models or part IDs."
+    ),
 )
 def check_stock_batch(part_ids: list[str]) -> dict[str, Any]:
     """Return stock status for each requested part and a summary."""
