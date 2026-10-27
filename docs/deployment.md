@@ -37,6 +37,28 @@ The deployment creates all resources in a single resource group (`rg-<env-name>`
 - The azd AI agents extension: `azd extension install azure.ai.agents`
 - Docker Desktop (for local image builds if needed)
 
+The hosted agent definition uses service-level properties in `azure.yaml`
+(`kind`, `container`, `protocols`, and `environmentVariables`), as required by
+current versions of the AI agents extension. Model deployments are provisioned
+by Bicep using `FOUNDRY_MODEL` and `FOUNDRY_MODEL_CAPACITY`.
+Foundry injects `FOUNDRY_PROJECT_ENDPOINT` into the hosted agent; do not declare
+reserved `FOUNDRY_*` or `AGENT_*` variables in its `environmentVariables`.
+Both agent images install dependencies from `uv.lock` with `uv sync --frozen`
+so remote builds use the same Agent Framework and MCP versions as development.
+The inventory MCP image also uses its service lockfile and does not resolve
+dependencies at startup, preserving compatibility with the MCP v1 server API.
+
+The knowledge-base setup assumes the upload hook and AI Search indexer can reach
+the storage endpoint. If subscription policy enforces private-only Storage
+access, this demo requires additional private networking for both clients before
+knowledge-base ingestion can complete. Do not disable the policy to run the
+hook. Anonymous blob access and shared-key authentication remain disabled.
+For an explicitly limited deployment without knowledge retrieval, set
+`ENABLE_KNOWLEDGE_BASE_TOOL=0` in the azd environment and run
+`FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh`. The hook prints a warning
+and publishes only the inventory and work-order tools. After ingestion is
+available, set the value back to `1` and republish the toolbox.
+
 ## Quick Deployment
 
 ```bash

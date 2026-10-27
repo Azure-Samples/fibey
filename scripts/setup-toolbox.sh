@@ -17,7 +17,14 @@ WORK_ORDERS_FQDN="${WORK_ORDERS_FQDN:-$(env_value workOrdersApiFqdn)}"
 KB_NAME="${KB_NAME:-$(env_value KB_NAME)}"
 KB_NAME="${KB_NAME:-fibey-field-ops-kb}"
 SEARCH_ENDPOINT="${AZURE_SEARCH_ENDPOINT:-$(env_value AZURE_SEARCH_ENDPOINT)}"
+ENABLE_KNOWLEDGE_BASE_TOOL="${ENABLE_KNOWLEDGE_BASE_TOOL:-$(env_value ENABLE_KNOWLEDGE_BASE_TOOL)}"
+ENABLE_KNOWLEDGE_BASE_TOOL="${ENABLE_KNOWLEDGE_BASE_TOOL:-1}"
 KB_CONNECTION_NAME="kb-${KB_NAME}"
+
+case "$ENABLE_KNOWLEDGE_BASE_TOOL" in
+  0|1) ;;
+  *) echo "ENABLE_KNOWLEDGE_BASE_TOOL must be 0 or 1." >&2; exit 1 ;;
+esac
 
 if [ -z "$PROJECT_ENDPOINT" ] || [ -z "$INVENTORY_FQDN" ] || [ -z "$WORK_ORDERS_FQDN" ] || [ -z "$SEARCH_ENDPOINT" ]; then
   echo "Missing required values (FOUNDRY_PROJECT_ENDPOINT, inventoryMcpFqdn, workOrdersApiFqdn, AZURE_SEARCH_ENDPOINT)."
@@ -33,6 +40,9 @@ echo "Toolbox         : $TOOLBOX_NAME"
 echo "Inventory MCP   : https://${INVENTORY_FQDN}/mcp"
 echo "Work Orders API : https://${WORK_ORDERS_FQDN}"
 echo "Knowledge base  : $KB_MCP_ENDPOINT (connection: ${KB_CONNECTION_NAME})"
+if [ "$ENABLE_KNOWLEDGE_BASE_TOOL" = "0" ]; then
+  echo "WARNING: Knowledge-base tool is explicitly disabled for this environment." >&2
+fi
 echo ""
 
 TOKEN=$(az account get-access-token --scope "https://ai.azure.com/.default" --query accessToken -o tsv)
@@ -83,7 +93,11 @@ import json, sys
 work_orders_spec = json.loads(sys.argv[1])
 
 body = {
-    'description': 'Fibey Field Ops toolbox: inventory, work orders, and knowledge base.',
+    'description': (
+        'Fibey Field Ops toolbox: inventory, work orders, and knowledge base.'
+        if sys.argv[2] == '1'
+        else 'Fibey Field Ops toolbox: inventory and work orders; knowledge base disabled.'
+    ),
     'tools': [
         # Enables tool search (preview): other tools are discovered via the
         # tool_search tool instead of being listed upfront to the model.
@@ -105,17 +119,18 @@ body = {
                 'auth': {'type': 'anonymous'},
             },
         },
-        {
-            'type': 'mcp',
-            'server_label': 'knowledge_base',
-            'server_url': '${KB_MCP_ENDPOINT}',
-            'require_approval': 'never',
-            'project_connection_id': '${KB_CONNECTION_NAME}',
-        },
     ],
 }
+if sys.argv[2] == '1':
+    body['tools'].append({
+        'type': 'mcp',
+        'server_label': 'knowledge_base',
+        'server_url': '${KB_MCP_ENDPOINT}',
+        'require_approval': 'never',
+        'project_connection_id': '${KB_CONNECTION_NAME}',
+    })
 json.dump(body, sys.stdout)
-" "$WORK_ORDERS_SPEC")
+" "$WORK_ORDERS_SPEC" "$ENABLE_KNOWLEDGE_BASE_TOOL")
 
 RESPONSE=$(curl --fail-with-body -sS -X POST \
   "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions?api-version=v1" \

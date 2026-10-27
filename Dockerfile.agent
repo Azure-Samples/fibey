@@ -1,5 +1,5 @@
 # Foundry-hosted agent image: built remotely (remoteBuild) for the
-# `fibey-agent` service in azure.yaml. Installs deps from requirements.txt
+# `fibey-agent` service in azure.yaml. Installs deps from uv.lock
 # and runs the hosted agent entrypoint (src/fibey/agent/hosted.py).
 FROM mirror.gcr.io/library/python:3.12-slim
 
@@ -8,11 +8,9 @@ WORKDIR /app
 COPY . user_agent/
 WORKDIR /app/user_agent
 
-RUN if [ -f requirements.txt ]; then \
-        pip install --no-cache-dir -r requirements.txt; \
-    else \
-        echo "No requirements.txt found"; \
-    fi
+RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
+
+ENV PATH="/app/user_agent/.venv/bin:$PATH"
 
 EXPOSE 8088
 

@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "FastAPI work orders API"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
+    "fastapi>=0.153.0,<1",
+    "uvicorn[standard]>=0.54.0,<1",
 ]
 
 [build-system]

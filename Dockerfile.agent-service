@@ -11,13 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 
 # Install the package and all its dependencies
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
 
 # Set Python path to include src
+ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
