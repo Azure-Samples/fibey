@@ -77,13 +77,11 @@ infra:
     module: main
 hooks:
     postdeploy:
-        name: postdeploy
         kind: sh
         shell: sh
         run: ./scripts/setup-toolbox.sh
         interactive: true
     postprovision:
-        name: postprovision
         kind: sh
         shell: sh
         run: ./scripts/setup-knowledge-base.sh

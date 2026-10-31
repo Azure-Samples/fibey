@@ -35,7 +35,7 @@ This skill calls the Foundry-managed Azure AI Search retrieval tool.
 
 - Tool name: use the exact name returned by `tool_search` (normally `knowledge_base___knowledge_base_retrieve`).
 - Argument shape: `{"queries": ["<one complete natural-language question or request>"]}`. The `queries` array must contain exactly one string.
-- Discovery: if the knowledge-base tool is not already visible in your tool list, run `tool_search({"query": "knowledge base", "limit": 20})` once. Tools returned by `tool_search` stay callable for the rest of the turn.
+- Discovery: if the knowledge-base tool is not already visible in your tool list, run `tool_search({"query": "knowledge base", "limit": 10})` once. Tools returned by `tool_search` stay callable for the rest of the turn.
 
 ## Step-by-Step Instructions
 

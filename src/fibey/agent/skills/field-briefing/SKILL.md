@@ -28,13 +28,18 @@ This skill uses **three** capabilities from the Foundry Toolbox in sequence:
 
 ### Step 0: Discover tools (REQUIRED before first call this turn)
 
-If any of these tools isn't already visible in your tool list, run **one** combined `tool_search` with **`limit: 20`**:
+If any of these tools isn't already visible in your tool list, run **one** combined `tool_search` with **`limit: 10`**:
 
 ```
-tool_search({"query": "work order parts stock knowledge base", "limit": 20})
+tool_search({"query": "get_work_order check_stock_batch knowledge_base_retrieve", "limit": 10})
 ```
 
-**Never** run one search per capability — a single combined query with `limit: 20` returns all needed tools, and they stay callable for the rest of the turn.
+**Never** run one search per capability — use a single combined query with `limit: 10`, the Toolbox maximum. Returned tools stay callable for the rest of the turn.
+
+Use the operation-focused query above. Broad terms such as "work order parts stock"
+can fill all ten results with inventory and work-order tools before knowledge
+retrieval is included. If discovery lacks a required capability, report that it
+is unavailable; do not call an undiscovered name or retry with a reworded KB query.
 
 ## Step-by-Step Instructions
 

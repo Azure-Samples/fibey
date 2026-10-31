@@ -323,6 +323,7 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                 <div key={activity.id} className="relative">
                   <button
                     type="button"
+                    aria-label={`${tool.name}: ${status.label}`}
                     onClick={() => toggleExpand(activity.id)}
                     className={`relative flex w-full items-start gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/60 ${
                       isExpanded ? "bg-gray-100 dark:bg-gray-800/60" : ""
@@ -403,6 +404,14 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                             </div>
                           )}
                           {/* Tools selected after discovery */}
+                          {activity.status === "error" && (
+                            <div className="border-t border-red-100 pt-1.5 text-[11px] text-red-600 dark:border-red-900 dark:text-red-400">
+                              <p className="font-medium">Tool call failed</p>
+                              <p className="mt-0.5 whitespace-pre-wrap break-words">
+                                {activity.result || activity.detail}
+                              </p>
+                            </div>
+                          )}
                           {activity.tool === "tool_search" && activity.results && activity.results.length > 0 && (() => {
                             const returnedByName = new Map(activity.results.map((r) => [r.name, r]));
                             const selectedResults = invokedTools.map(

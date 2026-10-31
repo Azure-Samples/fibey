@@ -434,8 +434,13 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Local coding-assistant skill installer state
+/skills-lock.json
+
 # Frontend build output
 dist/
+ui/test-results/
+ui/playwright-report/
 
 .DS_Store
 *.DS_Store

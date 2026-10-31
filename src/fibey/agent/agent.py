@@ -184,6 +184,17 @@ def _create_kb_search_tool() -> FunctionTool | None:
     )
 
 
+def _tool_result_is_error(result: Any) -> bool:
+    if isinstance(result, str):
+        if result.lstrip().lower().startswith("error:"):
+            return True
+        try:
+            result = json.loads(result)
+        except json.JSONDecodeError:
+            return False
+    return isinstance(result, dict) and bool(result.get("isError") or result.get("error"))
+
+
 def create_agent() -> tuple[Agent, list]:
     """Create the agent with Foundry client and Toolbox MCP connection."""
     credential = _get_credential()
@@ -350,26 +361,19 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                         call_id = getattr(content, "call_id", None) or ""
                         tool_name = call_id_to_name.get(call_id) or getattr(content, "tool_name", None) or getattr(content, "name", None) or "tool"
 
-                        # Log tool results so we can diagnose error/retry paths and
-                        # verify the model is actually seeing what the toolbox returns.
-                        try:
-                            result_obj = getattr(content, "result", None)
-                            result_repr = ""
-                            is_error = False
-                            if result_obj is not None:
-                                if isinstance(result_obj, (dict, list)):
-                                    result_repr = json.dumps(result_obj)[:500]
-                                    if isinstance(result_obj, dict):
-                                        is_error = bool(result_obj.get("isError")) or "error" in result_obj
-                                else:
-                                    result_repr = str(result_obj)[:500]
-                                    is_error = "error" in result_repr.lower()[:200]
-                            logger.info(
-                                "TOOL_RESULT call_id=%s tool=%s is_error=%s preview=%s",
-                                call_id, tool_name, is_error, result_repr.replace("\n", " ")[:400],
-                            )
-                        except Exception as log_exc:
-                            logger.debug("tool-result logging failed: %s", log_exc)
+                        result_obj = getattr(content, "result", None)
+                        exception = getattr(content, "exception", None)
+                        is_error = bool(exception) or _tool_result_is_error(result_obj)
+                        result_repr = (
+                            json.dumps(result_obj)
+                            if isinstance(result_obj, (dict, list))
+                            else str(result_obj) if result_obj is not None else ""
+                        )
+                        error_detail = str(exception) if exception else result_repr
+                        logger.info(
+                            "TOOL_RESULT call_id=%s tool=%s is_error=%s preview=%s",
+                            call_id, tool_name, is_error, error_detail.replace("\n", " ")[:400],
+                        )
 
                         # Safety net: if early-chunk unwrap of `call_tool` failed
                         # (args were chunked), retry now that pending_args is complete.
@@ -497,16 +501,21 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                             update_event.update(extra_meta)
                             yield update_event
 
-                        # Emit the "complete" activity.
+                        # Report the tool outcome, not just that execution finished.
                         if call_id not in emitted_complete:
                             complete_event = {
                                 "type": "activity",
                                 "tool": tool_name,
                                 "call_id": call_id,
-                                "status": "complete",
-                                "detail": f"Completed {tool_name}",
+                                "status": "error" if is_error else "complete",
+                                "detail": (
+                                    f"Failed {tool_name}: {error_detail[:200]}"
+                                    if is_error else f"Completed {tool_name}"
+                                ),
                                 "args": args_str,
                             }
+                            if is_error:
+                                complete_event["result"] = error_detail[:2000]
                             complete_event.update(extra_meta)
                             yield complete_event
                             emitted_complete.add(call_id)
@@ -519,4 +528,3 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                             ctype,
                             {k: str(v)[:100] for k, v in vars(content).items()} if hasattr(content, '__dict__') else str(content)[:200]
                         )
-
