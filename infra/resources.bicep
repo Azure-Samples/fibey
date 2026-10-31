@@ -52,6 +52,9 @@ param enableCapabilityHost bool
 @description('Enable monitoring for the Foundry project.')
 param enableMonitoring bool
 
+@description('Opt out of automated storage lockdown only in explicitly approved demo environments.')
+param ignoreStorageSecurityControl bool
+
 @description('Model deployment name used by the agent and gateway.')
 param foundryModel string
 
@@ -160,7 +163,9 @@ module storageAccount 'modules/storage-account.bicep' = {
   params: {
     name: storageAccountName
     location: location
-    tags: tags
+    tags: union(tags, ignoreStorageSecurityControl ? {
+      SecurityControl: 'Ignore'
+    } : {})
   }
 }
 
@@ -392,7 +397,7 @@ module gateway 'modules/container-app.bicep' = {
     env: [
       {
         name: 'AGENT_MODE'
-        value: 'containerapp'
+        value: 'hosted'
       }
       {
         name: 'CONTAINERAPP_AGENT_URL'

@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
+from fibey.tool_results import tool_result_is_error, tool_search_results
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,22 @@ def _sse(event: str, data: dict | str) -> str:
     """Format a server-sent event."""
     payload = json.dumps(data) if isinstance(data, dict) else data
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _hosted_call_details(item: dict) -> dict:
+    name = item.get("name", "tool")
+    args = item.get("arguments", "")
+    if name == "call_tool" and args:
+        try:
+            wrapper = json.loads(args)
+        except json.JSONDecodeError:
+            logger.warning("Invalid hosted call_tool arguments: %s", args[:200])
+        else:
+            if isinstance(wrapper, dict) and wrapper.get("name"):
+                name = wrapper["name"]
+                inner_args = wrapper.get("arguments", {})
+                args = inner_args if isinstance(inner_args, str) else json.dumps(inner_args)
+    return {**item, "name": name, "arguments": args}
 
 
 async def _run_local(message: str, session_id: str) -> AsyncGenerator[str, None]:
@@ -123,6 +141,7 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
         body["previous_response_id"] = agent_session_id
 
     seen_call_ids: set[str] = set()
+    calls: dict[str, dict] = {}
 
     debug_events = os.getenv("HOSTED_DEBUG_EVENTS", "0") == "1"
     timeout_s = float(os.getenv("HOSTED_TIMEOUT_SECONDS", "600"))
@@ -183,8 +202,11 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
 
                             if item_type in ("mcp_call", "function_call") and call_id not in seen_call_ids:
                                 seen_call_ids.add(call_id)
-                                tool_name = item.get("name", "tool")
-                                args = item.get("arguments", "")
+                                calls[call_id] = _hosted_call_details(item)
+                                tool_name = calls[call_id]["name"]
+                                args = calls[call_id]["arguments"]
+                                if tool_name == "call_tool" and not args:
+                                    continue
                                 yield _sse("activity", {
                                     "tool": tool_name,
                                     "call_id": call_id,
@@ -200,7 +222,18 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                             item_type = item.get("type", "")
                             call_id = item.get("call_id", "") or item.get("id", "")
 
-                            if item_type == "mcp_call":
+                            if item_type == "function_call":
+                                calls[call_id] = _hosted_call_details(item)
+                                call = calls[call_id]
+                                yield _sse("activity", {
+                                    "tool": call["name"],
+                                    "call_id": call_id,
+                                    "status": "running",
+                                    "detail": f"Calling {call['name']}",
+                                    "args": call["arguments"],
+                                    "result": "",
+                                })
+                            elif item_type == "mcp_call":
                                 # MCP call output is on the mcp_call item itself
                                 output = item.get("output", "") or item.get("result", "")
                                 error = item.get("error")
@@ -225,13 +258,22 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                                     })
                             elif item_type in ("mcp_call_output", "function_call_output"):
                                 output = item.get("output", "")
+                                call = calls.get(call_id, {})
+                                is_error = bool(item.get("error")) or tool_result_is_error(output)
+                                results = []
+                                if call.get("name") == "tool_search":
+                                    try:
+                                        results = tool_search_results(output)
+                                    except (ValueError, AttributeError, TypeError) as exc:
+                                        logger.warning("Hosted tool_search result parse failed: %s", exc)
                                 yield _sse("activity", {
-                                    "tool": "",
+                                    "tool": call.get("name", ""),
                                     "call_id": call_id,
-                                    "status": "complete",
-                                    "detail": "Done",
-                                    "args": "",
+                                    "status": "error" if is_error else "complete",
+                                    "detail": "Tool call failed" if is_error else "Done",
+                                    "args": call.get("arguments", ""),
                                     "result": output[:2000] if isinstance(output, str) else json.dumps(output)[:2000],
+                                    "results": results,
                                 })
 
                         # Dedicated MCP-call lifecycle events (newer Responses API)

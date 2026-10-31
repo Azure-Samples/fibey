@@ -53,6 +53,9 @@
     "enableMonitoring": {
       "value": "${ENABLE_MONITORING=true}"
     },
+    "ignoreStorageSecurityControl": {
+      "value": "${IGNORE_STORAGE_SECURITY_CONTROL=false}"
+    },
     "foundryModel": {
       "value": "${FOUNDRY_MODEL=gpt-4.1-mini}"
     },

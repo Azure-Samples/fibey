@@ -57,6 +57,9 @@ param enableCapabilityHost bool = true
 @description('Enable monitoring (Application Insights) for the Foundry project.')
 param enableMonitoring bool = true
 
+@description('Opt out of automated storage lockdown only in explicitly approved demo environments.')
+param ignoreStorageSecurityControl bool = false
+
 @description('Model deployment name used by the agent and gateway.')
 param foundryModel string = 'gpt-4.1-mini'
 
@@ -125,6 +128,7 @@ module resources 'resources.bicep' = {
     enableHostedAgents: enableHostedAgents
     enableCapabilityHost: enableCapabilityHost
     enableMonitoring: enableMonitoring
+    ignoreStorageSecurityControl: ignoreStorageSecurityControl
     foundryModel: foundryModel
     foundryModelCapacity: foundryModelCapacity
     toolboxName: toolboxName

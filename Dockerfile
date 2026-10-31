@@ -6,6 +6,7 @@ WORKDIR /app
 
 COPY src/fibey/gateway/ ./src/fibey/gateway/
 COPY src/fibey/__init__.py ./src/fibey/__init__.py
+COPY src/fibey/tool_results.py ./src/fibey/tool_results.py
 
 RUN pip install --no-cache-dir \
     fastapi \

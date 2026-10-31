@@ -30,6 +30,7 @@ from agent_framework import (
 from agent_framework.foundry import FoundryChatClient
 
 from fibey.agent.mcp_skills import McpSkillsSource
+from fibey.tool_results import tool_result_is_error, tool_search_results
 
 logger = logging.getLogger(__name__)
 
@@ -182,17 +183,6 @@ def _create_kb_search_tool() -> FunctionTool | None:
         ),
         func=knowledge_base_search,
     )
-
-
-def _tool_result_is_error(result: Any) -> bool:
-    if isinstance(result, str):
-        if result.lstrip().lower().startswith("error:"):
-            return True
-        try:
-            result = json.loads(result)
-        except json.JSONDecodeError:
-            return False
-    return isinstance(result, dict) and bool(result.get("isError") or result.get("error"))
 
 
 def create_agent() -> tuple[Agent, list]:
@@ -360,7 +350,7 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
 
                         result_obj = getattr(content, "result", None)
                         exception = getattr(content, "exception", None)
-                        is_error = bool(exception) or _tool_result_is_error(result_obj)
+                        is_error = bool(exception) or tool_result_is_error(result_obj)
                         result_repr = (
                             json.dumps(result_obj)
                             if isinstance(result_obj, (dict, list))
@@ -397,27 +387,8 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                         # were discovered (and later mark which ones were used).
                         if tool_name == "tool_search":
                             try:
-                                raw_text = result_obj if isinstance(result_obj, str) else None
-                                if raw_text is None and isinstance(result_obj, dict):
-                                    content_list = result_obj.get("content") or []
-                                    if content_list and isinstance(content_list, list):
-                                        first = content_list[0]
-                                        if isinstance(first, dict):
-                                            raw_text = first.get("text")
-                                if raw_text is None and result_obj is not None:
-                                    raw_text = str(result_obj)
-                                parsed_result = json.loads(raw_text) if raw_text else {}
-                                tools_list = parsed_result.get("tools") if isinstance(parsed_result, dict) else None
-                                if isinstance(tools_list, list):
-                                    extra_meta["results"] = [
-                                        {
-                                            "name": t.get("name", ""),
-                                            "description": (t.get("description") or "").strip().split("\n")[0][:200],
-                                        }
-                                        for t in tools_list
-                                        if isinstance(t, dict) and t.get("name")
-                                    ]
-                            except Exception as parse_exc:
+                                extra_meta["results"] = tool_search_results(result_obj)
+                            except (ValueError, TypeError, AttributeError) as parse_exc:
                                 logger.debug("tool_search result parse failed: %s", parse_exc)
 
                         # If this call was suppressed at early-chunk time

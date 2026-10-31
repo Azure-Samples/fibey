@@ -8,11 +8,10 @@ WORKDIR /app
 COPY . user_agent/
 WORKDIR /app/user_agent
 
-RUN if [ -f requirements.txt ]; then \
-        pip install --no-cache-dir -r requirements.txt; \
-    else \
-        echo "No requirements.txt found"; \
-    fi
+RUN pip install --no-cache-dir -r requirements.txt
+
+ENV PYTHONPATH=/app/user_agent/src
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8088
 
