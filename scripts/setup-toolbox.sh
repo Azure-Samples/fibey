@@ -53,6 +53,11 @@ publish_skill() {
   status=$(curl -sS -o /dev/null -w "%{http_code}" "${base}?api-version=v1" \
     -H "Authorization: Bearer ${TOKEN}" -H "Foundry-Features: Skills=V1Preview")
 
+  if [ "$status" != "200" ] && [ "$status" != "404" ]; then
+    echo "  ✗ ${name}: unexpected HTTP ${status} while checking for the skill" >&2
+    exit 1
+  fi
+
   if [ "$status" = "200" ]; then
     tmp_zip=$(mktemp)
     curl --fail-with-body -sS "${base}/content?api-version=v1" \
@@ -84,14 +89,17 @@ PY
 }
 
 echo "=== Publishing skills from ${SKILLS_DIR} ==="
-for name in "${SKILL_NAMES[@]}"; do
+if [ "${#SKILL_NAMES[@]}" -eq 0 ]; then
+  echo "  ⚠ No skills found (expected <name>/SKILL.md folders) — the toolbox will have none attached."
+fi
+for name in ${SKILL_NAMES[@]+"${SKILL_NAMES[@]}"}; do
   publish_skill "$name"
 done
 
 SKILLS_JSON=$(python3 -c "
 import json, sys
 print(json.dumps([{'type': 'skill_reference', 'name': n} for n in sys.argv[1:]]))
-" "${SKILL_NAMES[@]}")
+" ${SKILL_NAMES[@]+"${SKILL_NAMES[@]}"})
 
 # Create a toolbox version from a JSON body and promote it to default.
 publish_toolbox_version() {
