@@ -37,14 +37,121 @@ echo ""
 
 TOKEN=$(az account get-access-token --scope "https://ai.azure.com/.default" --query accessToken -o tsv)
 
-# ─── Skip if the toolbox already exists (unless forced) ────────────────
-EXISTING_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+SKILLS_DIR="${SKILLS_DIR:-$(cd "$(dirname "$0")/.." && pwd)/skills}"
+SKILL_NAMES=()
+if [ -d "$SKILLS_DIR" ]; then
+  for d in "$SKILLS_DIR"/*/; do
+    [ -f "${d}SKILL.md" ] && SKILL_NAMES+=("$(basename "$d")")
+  done
+fi
+
+# ─── Publish skills (idempotent: a new skill version only if content changed) ──
+publish_skill() {
+  local name="$1" file="$SKILLS_DIR/$1/SKILL.md"
+  local base="${PROJECT_ENDPOINT}/skills/${name}"
+  local status tmp_zip version
+  status=$(curl -sS -o /dev/null -w "%{http_code}" "${base}?api-version=v1" \
+    -H "Authorization: Bearer ${TOKEN}" -H "Foundry-Features: Skills=V1Preview")
+
+  if [ "$status" = "200" ]; then
+    tmp_zip=$(mktemp)
+    curl --fail-with-body -sS "${base}/content?api-version=v1" \
+      -H "Authorization: Bearer ${TOKEN}" -H "Foundry-Features: Skills=V1Preview" \
+      -o "$tmp_zip"
+    if python3 - "$tmp_zip" "$file" <<'PY'
+import sys, zipfile
+remote = zipfile.ZipFile(sys.argv[1]).read("SKILL.md")
+sys.exit(0 if remote == open(sys.argv[2], "rb").read() else 1)
+PY
+    then
+      rm -f "$tmp_zip"
+      echo "  ✓ ${name}: unchanged"
+      return
+    fi
+    rm -f "$tmp_zip"
+  fi
+
+  version=$(curl --fail-with-body -sS -X POST "${base}/versions?api-version=v1" \
+    -H "Authorization: Bearer ${TOKEN}" -H "Foundry-Features: Skills=V1Preview" \
+    -F "files=@${file};type=text/markdown" \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])")
+  # The first version becomes the default automatically; later ones must be promoted.
+  curl --fail-with-body -sS -X POST "${base}?api-version=v1" \
+    -H "Authorization: Bearer ${TOKEN}" -H "Foundry-Features: Skills=V1Preview" \
+    -H "Content-Type: application/json" \
+    -d "{\"default_version\": \"${version}\"}" > /dev/null
+  echo "  ✓ ${name}: published version ${version}"
+}
+
+echo "=== Publishing skills from ${SKILLS_DIR} ==="
+for name in "${SKILL_NAMES[@]}"; do
+  publish_skill "$name"
+done
+
+SKILLS_JSON=$(python3 -c "
+import json, sys
+print(json.dumps([{'type': 'skill_reference', 'name': n} for n in sys.argv[1:]]))
+" "${SKILL_NAMES[@]}")
+
+# Create a toolbox version from a JSON body and promote it to default.
+publish_toolbox_version() {
+  local response new_version
+  response=$(curl --fail-with-body -sS -X POST \
+    "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions?api-version=v1" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Foundry-Features: Skills=V1Preview" \
+    -H "Content-Type: application/json" \
+    -d "$1") || {
+      echo "Toolbox version creation failed:" >&2
+      echo "$response" | python3 -m json.tool >&2 || echo "$response" >&2
+      exit 1
+    }
+  new_version=$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])")
+  curl --fail-with-body -sS -X PATCH \
+    "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"default_version\": \"${new_version}\"}" > /dev/null
+  echo "✓ Toolbox '${TOOLBOX_NAME}' version ${new_version} set as default"
+  echo "  MCP endpoint: ${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/mcp?api-version=v1"
+}
+
+# ─── Toolbox already exists: only publish a new version if skills changed ──
+EXISTING=$(curl -sS -w "\n%{http_code}" \
   "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1" \
   -H "Authorization: Bearer ${TOKEN}")
+EXISTING_STATUS="${EXISTING##*$'\n'}"
+EXISTING_BODY="${EXISTING%$'\n'*}"
 
 if [ "$EXISTING_STATUS" = "200" ] && [ "${FORCE_TOOLBOX_UPDATE:-0}" != "1" ]; then
-  echo "✓ Toolbox '${TOOLBOX_NAME}' already exists — skipping creation."
-  echo "  Set FORCE_TOOLBOX_UPDATE=1 to publish a new version."
+  DEFAULT_VERSION=$(echo "$EXISTING_BODY" | python3 -c "import json,sys; print(json.load(sys.stdin)['default_version'])")
+  CURRENT=$(curl --fail-with-body -sS \
+    "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions/${DEFAULT_VERSION}?api-version=v1" \
+    -H "Authorization: Bearer ${TOKEN}" -H "Foundry-Features: Skills=V1Preview")
+
+  if echo "$CURRENT" | python3 -c "
+import json, sys
+current = json.load(sys.stdin).get('skills') or []
+wanted = json.loads(sys.argv[1])
+sys.exit(0 if {s['name'] for s in current} == {s['name'] for s in wanted} else 1)
+" "$SKILLS_JSON"; then
+    echo "✓ Toolbox '${TOOLBOX_NAME}' already exists with the current skills — nothing to publish."
+    echo "  Set FORCE_TOOLBOX_UPDATE=1 to rebuild the tools and publish a new version."
+    exit 0
+  fi
+
+  echo ""
+  echo "=== Attaching skills to existing toolbox (reusing tools from version ${DEFAULT_VERSION}) ==="
+  BODY=$(echo "$CURRENT" | python3 -c "
+import json, sys
+current = json.load(sys.stdin)
+json.dump({
+    'description': current.get('description', ''),
+    'tools': current['tools'],
+    'skills': json.loads(sys.argv[1]),
+}, sys.stdout)
+" "$SKILLS_JSON")
+  publish_toolbox_version "$BODY"
   exit 0
 fi
 
@@ -113,31 +220,9 @@ body = {
             'project_connection_id': '${KB_CONNECTION_NAME}',
         },
     ],
+    'skills': json.loads(sys.argv[2]),
 }
 json.dump(body, sys.stdout)
-" "$WORK_ORDERS_SPEC")
+" "$WORK_ORDERS_SPEC" "$SKILLS_JSON")
 
-RESPONSE=$(curl --fail-with-body -sS -X POST \
-  "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/versions?api-version=v1" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "$BODY") || {
-    echo "Toolbox version creation failed:" >&2
-    echo "$RESPONSE" | python3 -m json.tool >&2 || echo "$RESPONSE" >&2
-    exit 1
-  }
-
-echo "$RESPONSE" | python3 -m json.tool | sed -n '1,20p'
-
-# ─── Promote the new version to default ────────────────────────────────
-NEW_VERSION=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])")
-curl --fail-with-body -sS -X PATCH \
-  "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{\"default_version\": \"${NEW_VERSION}\"}" > /dev/null
-echo "✓ Version ${NEW_VERSION} set as default"
-
-echo ""
-echo "✓ Toolbox '${TOOLBOX_NAME}' created (version ${NEW_VERSION}, tool search enabled)"
-echo "  MCP endpoint: ${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/mcp?api-version=v1"
+publish_toolbox_version "$BODY"
