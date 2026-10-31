@@ -22,7 +22,6 @@ from agent_framework import (
     Agent,
     AgentResponseUpdate,
     AgentSession,
-    FileSkillsSource,
     FunctionTool,
     MCPStreamableHTTPTool,
     ResponseStream,
@@ -30,10 +29,11 @@ from agent_framework import (
 )
 from agent_framework.foundry import FoundryChatClient
 
+from fibey.agent.mcp_skills import McpSkillsSource
+
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
-SKILLS_PATH = Path(__file__).parent / "skills"
 _TOKEN_SCOPE = "https://ai.azure.com/.default"
 
 # Azure AI Search configuration for direct KB queries
@@ -109,7 +109,7 @@ def _create_toolbox_mcp(credential) -> MCPStreamableHTTPTool | None:
 
     auth_http_client = httpx.AsyncClient(
         auth=auth,
-        headers={"Foundry-Features": "Toolboxes=V1Preview"},
+        headers={"Foundry-Features": "Toolboxes=V1Preview,Skills=V1Preview"},
         timeout=120.0,
     )
 
@@ -215,17 +215,11 @@ def create_agent() -> tuple[Agent, list]:
         if kb_tool:
             tools.append(kb_tool)
 
-    skills_provider = None
-    if SKILLS_PATH.is_dir():
-        skills_source = FileSkillsSource(SKILLS_PATH)
-        skills_provider = SkillsProvider(skills_source)
-
     agent = Agent(
         client=client,
         name="fibey",
         instructions=_load_system_prompt(),
         tools=tools,
-        context_providers=[skills_provider] if skills_provider else None,
     )
 
     return agent, tools
@@ -252,6 +246,9 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
         for tool in tools:
             if isinstance(tool, MCPStreamableHTTPTool):
                 await stack.enter_async_context(tool)
+                if tool.session is None:
+                    raise RuntimeError("Toolbox MCP session was not initialized")
+                agent.context_providers.append(SkillsProvider(McpSkillsSource(tool.session)))
 
         stream = agent.run(
             message,

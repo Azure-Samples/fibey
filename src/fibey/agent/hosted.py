@@ -18,8 +18,10 @@ Environment variables (set in agent.yaml):
     TOOLBOX_MCP_URL — Foundry Toolbox MCP endpoint URL
 """
 
+import asyncio
 import logging
 import os
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 import httpx
@@ -35,13 +37,14 @@ from azure.identity import (
 )
 from dotenv import load_dotenv
 
+from fibey.agent.mcp_skills import McpSkillsSource
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
-SKILLS_DIR = Path(__file__).parent / "skills"
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +80,7 @@ def _load_system_prompt() -> str:
     return "You are Fibey, a helpful AI assistant for fiber optics field operations."
 
 
-def main() -> None:
+async def main() -> None:
     """Start the hosted agent server."""
     user_mi = ManagedIdentityCredential(client_id=os.getenv("AZURE_CLIENT_ID"))
     azd_cli = AzureDeveloperCliCredential(
@@ -95,56 +98,51 @@ def main() -> None:
         credential=credential,
     )
 
-    # --- Toolbox MCP Tool ---
-    tools: list = []
-    toolbox_url = os.environ.get("TOOLBOX_MCP_URL", "")
-    if toolbox_url:
-        if "api-version" not in toolbox_url:
-            separator = "&" if "?" in toolbox_url else "?"
-            toolbox_url = f"{toolbox_url}{separator}api-version=v1"
-        logger.info("Registering Toolbox MCP: %s", toolbox_url[:80])
-        token_provider = get_bearer_token_provider(
-            credential, "https://ai.azure.com/.default"
-        )
-        toolbox_http_client = httpx.AsyncClient(
-            auth=ToolboxAuth(token_provider),
-            headers={"Foundry-Features": "Toolboxes=V1Preview"},
-            timeout=120.0,
-        )
-        toolbox_mcp_tool = MCPStreamableHTTPTool(
-            name="toolbox",
-            url=toolbox_url,
-            http_client=toolbox_http_client,
-            load_prompts=False,
-        )
-        tools.append(toolbox_mcp_tool)
-        logger.info("Toolbox MCP registered successfully")
-    else:
-        logger.warning("TOOLBOX_MCP_URL not set — agent will have no tools")
-
-    # --- Skills ---
-    skills_provider = None
-    if SKILLS_DIR.is_dir():
-        try:
-            skills_provider = SkillsProvider.from_paths(
-                skill_paths=str(SKILLS_DIR),
+    async with AsyncExitStack() as stack:
+        tools: list = []
+        skills_provider = None
+        toolbox_url = os.environ.get("TOOLBOX_MCP_URL", "")
+        if toolbox_url:
+            if "api-version" not in toolbox_url:
+                separator = "&" if "?" in toolbox_url else "?"
+                toolbox_url = f"{toolbox_url}{separator}api-version=v1"
+            logger.info("Registering Toolbox MCP: %s", toolbox_url[:80])
+            token_provider = get_bearer_token_provider(
+                credential, "https://ai.azure.com/.default"
             )
-            logger.info("Loaded skills from %s", SKILLS_DIR)
-        except Exception as exc:
-            logger.warning("Failed to load skills: %s", exc, exc_info=True)
+            toolbox_http_client = await stack.enter_async_context(httpx.AsyncClient(
+                auth=ToolboxAuth(token_provider),
+                headers={"Foundry-Features": "Toolboxes=V1Preview,Skills=V1Preview"},
+                timeout=120.0,
+            ))
+            toolbox_mcp_tool = await stack.enter_async_context(MCPStreamableHTTPTool(
+                name="toolbox",
+                url=toolbox_url,
+                http_client=toolbox_http_client,
+                load_prompts=False,
+            ))
+            tools.append(toolbox_mcp_tool)
+            if toolbox_mcp_tool.session is None:
+                raise RuntimeError("Toolbox MCP session was not initialized")
+            skills_source = McpSkillsSource(toolbox_mcp_tool.session)
+            await skills_source.get_skills()
+            skills_provider = SkillsProvider(skills_source)
+            logger.info("Toolbox MCP registered successfully")
+        else:
+            logger.warning("TOOLBOX_MCP_URL not set — agent will have no tools or skills")
 
-    agent = Agent(
-        client=client,
-        name="fibey",
-        instructions=_load_system_prompt(),
-        tools=tools,
-        context_providers=[skills_provider] if skills_provider else None,
-        default_options={"store": False},
-    )
+        agent = Agent(
+            client=client,
+            name="fibey",
+            instructions=_load_system_prompt(),
+            tools=tools,
+            context_providers=[skills_provider] if skills_provider else None,
+            default_options={"store": False},
+        )
 
-    server = ResponsesHostServer(agent)
-    server.run()
+        server = ResponsesHostServer(agent)
+        await server.run_async()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
