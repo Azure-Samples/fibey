@@ -5,5 +5,5 @@ agent-framework-foundry==1.5.0
 agent-framework-foundry-hosting==1.0.0a260519
 azure-identity
 httpx
-mcp==1.28.1
+mcp==1.30.0
 python-dotenv
