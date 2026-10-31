@@ -125,6 +125,29 @@ curl -X POST http://localhost:8080/api/sessions/reset \
   -d '{"session_id": "test-1"}'
 ```
 
+## Live browser regression tests
+
+With the local gateway and UI running, and Azure credentials and Toolbox access
+configured, run:
+
+```bash
+cd ui
+npx playwright install chromium
+npm run test:e2e
+```
+
+The suite clicks all six predefined prompts in fresh browser contexts, three
+times each (18 live requests, with no automatic retries). It checks that the
+matching skill finishes loading before tool discovery starts, operational calls
+follow discovery, expected tools complete, and answers and knowledge sources
+render in the UI. These tests use the real Azure model and backends, incur usage,
+and depend on the demo's seeded work orders and inventory.
+
+For a focused run, use `npm run test:e2e -- --grep "OTDR inventory"`.
+Failures include the chat event stream and a screenshot under `ui/test-results/`.
+Passing runs demonstrate sampled consistency, not a runtime guarantee of model
+tool ordering.
+
 ## Project Structure
 
 ```text

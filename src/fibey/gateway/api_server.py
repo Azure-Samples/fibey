@@ -291,6 +291,7 @@ async def _run_containerapp(message: str, session_id: str) -> AsyncGenerator[str
     
     url = f"{agent_url.rstrip('/')}/api/chat"
     body = {"message": message, "session_id": session_id}
+    completed = False
     
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
@@ -308,8 +309,9 @@ async def _run_containerapp(message: str, session_id: str) -> AsyncGenerator[str
                 
                 # Relay SSE events from agent service to client
                 async for line in resp.aiter_lines():
-                    if line:
-                        yield line + "\n"
+                    if line == "event: done":
+                        completed = True
+                    yield line + "\n"
     
     except httpx.TimeoutException:
         yield _sse("error", {"message": "Agent service request timed out"})
@@ -317,7 +319,8 @@ async def _run_containerapp(message: str, session_id: str) -> AsyncGenerator[str
         logger.exception("Container app agent proxy error")
         yield _sse("error", {"message": f"Proxy error: {exc}"})
     
-    yield _sse("done", "[DONE]")
+    if not completed:
+        yield _sse("done", "[DONE]")
 
 
 @app.post("/api/chat")

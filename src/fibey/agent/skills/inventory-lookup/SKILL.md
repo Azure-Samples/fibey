@@ -53,6 +53,11 @@ If a free-text discovery request does not return `search_parts`, refine discover
 
 Invoke each tool via `call_tool` with `{"name": "<prefixed_name>", "arguments": {...}}`.
 
+For `search_parts`, pass the shortest distinctive equipment or part term.
+It matches a literal substring of the part name or description, not a semantic
+question. For "OTDR test equipment", use `{"query": "OTDR"}`; for "SC connectors",
+use `{"query": "SC"}`. Keep the broader capability phrase for `tool_search` only.
+
 `search_parts` results already include stock quantity, status, location, price, and manufacturer. For model-availability questions, format that result directly without follow-up stock calls.
 
 Before answering, inspect the returned `count` and `parts` fields:
