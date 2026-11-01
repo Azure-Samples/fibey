@@ -13,30 +13,21 @@ browser automation requires additional Toolbox configuration.
 - Follow skill-based workflows for field briefings and work order preparation
 - Check network or service status when a browser automation tool is configured
 
-## Architecture (local mode)
+## Architecture
 
-```text
-┌──────────────┐  /api/chat  ┌──────────────────┐  in-proc  ┌──────────────────┐
-│  React UI    │ ──────────► │  FastAPI Gateway │ ────────► │  Fibey Agent     │
-│  + Activity  │ ◄── SSE ─── │  (:8080)         │           │  (agent-fw)      │
-└──────────────┘             └──────────────────┘           └────────┬─────────┘
-                                                                     │
-                                                         Foundry Toolbox MCP
-                                                                     │
-              ┌────────────────┬───────────────────┬─────────────────┐
-              │ inventory-mcp  │ work-orders-api   │ FoundryIQ KB    │
-              │   (:8001)      │    (:8002)        │ (AI Search)     │
-              └────────────────┴───────────────────┴─────────────────┘
-```
+![Fibey architecture in local and hosted modes: React UI exchanges chat and SSE with the gateway, which runs the agent in-process or calls its Foundry-hosted Responses API. The agent uses the Toolbox for inventory, work orders, knowledge retrieval, and skills.](docs/images/architecture-overview.svg)
 
-The Azure deployment uses **hosted** mode:
+[Editable Excalidraw source](docs/images/architecture-overview.excalidraw)
+(open in [Excalidraw](https://aka.ms/excalidraw)).
 
-```text
-React UI (Container App) -> FastAPI Gateway (Container App)
-    -> Foundry hosted agent (Responses API) -> Foundry Toolbox
-        -> inventory / work orders / knowledge base tools
-        -> MCP Resources: workflow skills
-```
+The UI sends chat requests to the FastAPI gateway and receives streaming text,
+tool activity, citations, and errors. In **local** mode, the gateway runs the
+agent in-process. The Azure deployment uses **hosted** mode: the gateway calls
+the Foundry-hosted agent's Responses API. Both modes connect to the same
+Toolbox for operational tools and workflow skills.
+
+See [docs/architecture.md](docs/architecture.md) for the detailed hosted system
+diagram, deployment boundaries, and component responsibilities.
 
 Both modes use `SkillsProvider(McpSkillsSource(session))` to read skills from
 the Toolbox through MCP Resources (SEP-2640), retaining `load_skill` activity

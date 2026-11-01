@@ -4,16 +4,15 @@ Fibey connects to the **Foundry Toolbox** through one **MCP (Model Context
 Protocol) Streamable HTTP** endpoint. The Toolbox dispatches tool calls to
 operational backends and serves versioned skills as MCP Resources.
 
-```text
-Field Ops Agent (local or Foundry-hosted)
-    |
-    +-- Foundry Toolbox MCP
-            +-- tools: tool_search / call_tool
-            |       +-- Inventory MCP (Container App)
-            |       +-- Work Orders OpenAPI (Container App)
-            |       +-- FoundryIQ KB MCP (Azure AI Search)
-            +-- resources: skill index and SKILL.md content
-```
+![Foundry Toolbox integration: one authenticated agent connection branches into operational tool calls for inventory, work orders, and FoundryIQ, and MCP Resources for skill discovery and loading.](images/toolbox-integration.svg)
+
+[Editable Excalidraw source](images/toolbox-integration.excalidraw)
+(open in [Excalidraw](https://aka.ms/excalidraw)).
+
+The arrows show requests and responses on the same MCP session. The tools
+surface provides `tool_search` and `call_tool` for inventory, Work Orders
+OpenAPI, and FoundryIQ KB MCP. The resources surface provides the skill index
+and `SKILL.md` content consumed by `McpSkillsSource` and `SkillsProvider`.
 
 The status dashboard is deployed as a separate Container App, but the current
 publisher does **not** register a browser automation tool. Status checks

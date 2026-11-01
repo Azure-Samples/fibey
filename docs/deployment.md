@@ -103,18 +103,17 @@ when choosing a different model.
 
 ## FoundryIQ Knowledge Base Setup
 
-The deployed knowledge path is:
+![FoundryIQ knowledge path: source Markdown is uploaded to Blob Storage, ingested by an AI Search indexer, and exposed through an index, knowledge source, knowledge base, KB MCP endpoint, and Foundry connection.](images/knowledge-pipeline.svg)
 
-```text
-services/foundry-iq-docs/docs/
-→ Blob Storage container
-→ AI Search indexer
-→ AI Search index
-→ Knowledge Source
-→ Knowledge Base
-→ MCP endpoint
-→ Foundry connection
-```
+[Editable Excalidraw source](images/knowledge-pipeline.excalidraw)
+(open in [Excalidraw](https://aka.ms/excalidraw)).
+
+Follow the numbered arrows for the content and retrieval path: Markdown in
+`services/foundry-iq-docs/docs/` is uploaded to Blob Storage and ingested by an
+AI Search indexer. The resulting index backs a knowledge source and knowledge
+base. The Toolbox accesses the KB MCP endpoint through a Foundry connection.
+This is not provisioning order: Bicep creates the connection before the
+postprovision hook builds the knowledge source and base.
 
 This pipeline is configured **automatically** by the azd postprovision hook
 (`azure.yaml` → `scripts/setup-knowledge-base.sh`):

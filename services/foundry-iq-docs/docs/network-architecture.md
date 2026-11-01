@@ -13,9 +13,16 @@
 ## PON Topology at a Glance
 
 
-```
-OLT port -> feeder fiber -> primary splitter -> distribution fiber -> secondary splitter or terminal -> drop fiber -> ONT/ONU
-```
+![PON topology: OLT port, feeder fiber, primary splitter, distribution fiber, secondary splitter or terminal, drop fiber, and ONT/ONU.](../../../docs/images/pon-topology.svg)
+
+[Editable Excalidraw source](../../../docs/images/pon-topology.excalidraw)
+(open in [Excalidraw](https://aka.ms/excalidraw)).
+
+Follow the numbered path from the OLT port through feeder fiber, the primary
+splitter, distribution fiber, a secondary splitter or terminal, and drop fiber
+to the ONT/ONU. The bidirectional arrows represent upstream and downstream
+service. A single-stage design can omit the secondary splitter.
+
 - The OLT lives in a central office, hub, headend, or cabinet and feeds one or more optical distribution networks.
 - Passive splitters divide one optical port across many customers without powered electronics in the outside plant.
 - ONT/ONU devices terminate the optical service at the customer or remote endpoint.

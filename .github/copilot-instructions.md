@@ -8,9 +8,14 @@ This repository is a **fiber optics field operations** demo built on Azure AI Fo
 - **FoundryIQ** — splicing procedures, safety protocols, troubleshooting docs
 - **Browser automation / status dashboard** — network and service status checks
 
-```text
-React UI → FastAPI Gateway → Field Ops Agent → Foundry Toolbox → 4 operational tools
-```
+![Fibey local and hosted architecture overview](../docs/images/architecture-overview.svg)
+
+[Editable Excalidraw source](../docs/images/architecture-overview.excalidraw).
+The React UI exchanges streaming chat with the FastAPI gateway. The gateway
+runs the agent in-process locally or calls its Foundry-hosted Responses API.
+The agent connects to the Toolbox for inventory, work orders, knowledge
+retrieval, and workflow skills. Browser automation for the separate status
+dashboard requires additional Toolbox configuration.
 
 - **Backend**: Python 3.12+, FastAPI, Microsoft Agent Framework
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS

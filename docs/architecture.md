@@ -6,48 +6,21 @@ Fibey Field Ops is a fiber optics field operations demo built on **Azure AI Foun
 
 ## System Diagram
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Browser                                                                    │
-│  Fibey Field Ops UI                                                        │
-│  ┌──────────────────────────────┬───────────────────────────────────────┐  │
-│  │ Chat for field technicians   │ Activity sidebar                      │  │
-│  │ "Need a splice tray and WO" │ ⚡ inventory-mcp running              │  │
-│  │ "Check outage before cutover"│ ✅ work-orders-api complete          │  │
-│  └──────────────────────────────┴───────────────────────────────────────┘  │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │ POST /api/chat (streaming SSE)
-                                ▼
-                   ┌──────────────────────────────┐
-                   │ Gateway (FastAPI)            │  src/fibey/gateway/
-                   │ Azure Container Apps         │
-                   └───────────────┬──────────────┘
-                                   │ hosted Responses API (local: in-process)
-                                   ▼
-                   ┌──────────────────────────────┐
-                   │ Fibey Field Ops Agent        │  src/fibey/agent/
-                   │ Foundry hosted agent         │
-                   └───────────────┬──────────────┘
-                                   │ Toolbox MCP tools + skill resources
-                                   ▼
-        ┌─────────────────────────────────────────────────────────────────┐
-        │ Toolbox services                                                │
-        │  • inventory-mcp         → parts inventory and stock checks     │
-        │  • work-orders-api       → create/view/update work orders       │
-        │  • FoundryIQ knowledge   → AI Search + KB MCP retrieval         │
-        │  • MCP Resources         → five workflow skills                 │
-        └───────────────┬───────────────────────┬─────────────────────────┘
-                        │                       │
-          ┌─────────────▼────────────┐  ┌──────▼─────────────────────┐
-          │ services/inventory-mcp   │  │ services/work-orders-api   │
-          │ Container App / :8001    │  │ Container App / :8002      │
-          └──────────────────────────┘  └────────────────────────────┘
+![Fibey hosted system architecture: React UI exchanges streaming chat with the gateway, which calls the Foundry-hosted agent. The agent connects to the Toolbox for inventory, work orders, knowledge retrieval, and workflow skills. The status dashboard is separate.](images/system-architecture.svg)
 
-          ┌──────────────────────────┐  ┌────────────────────────────┐
-          │ services/status-dashboard│  │ services/foundry-iq-docs   │
-          │ Static app / :8003       │  │ Blob → Search → KB source  │
-          └──────────────────────────┘  └────────────────────────────┘
-```
+[Editable Excalidraw source](images/system-architecture.excalidraw)
+(open in [Excalidraw](https://aka.ms/excalidraw)).
+
+The bidirectional arrows represent requests and their responses: UI chat and
+SSE updates pass through the gateway, the gateway calls the hosted Responses
+API, and the agent uses one authenticated Toolbox MCP connection. The Toolbox
+routes tool calls to inventory, work orders, and FoundryIQ, while MCP Resources
+provide the five workflow skills used by `McpSkillsSource` and `SkillsProvider`.
+
+The status dashboard has no Toolbox arrow because browser automation is not
+registered by the publisher. In local development, the gateway runs the agent
+in-process; the Toolbox connections stay the same. The component descriptions
+below explain each box's runtime, responsibilities, and source files.
 
 ## Components
 
