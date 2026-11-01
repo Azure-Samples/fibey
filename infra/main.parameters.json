@@ -77,9 +77,6 @@
     "gatewayImageName": {
       "value": "${SERVICE_GATEWAY_IMAGE_NAME=}"
     },
-    "agentServiceImageName": {
-      "value": "${SERVICE_AGENT_SERVICE_IMAGE_NAME=}"
-    },
     "inventoryMcpImageName": {
       "value": "${SERVICE_INVENTORY_MCP_IMAGE_NAME=}"
     },

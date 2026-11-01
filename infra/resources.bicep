@@ -67,17 +67,11 @@ param toolboxName string
 @description('Name of the AI Search knowledge base.')
 param knowledgeBaseName string
 
-@description('Name of the AI Search index for FoundryIQ documents.')
-param searchIndexName string
-
 @description('Container image for the ui service.')
 param uiImageName string
 
 @description('Container image for the gateway service.')
 param gatewayImageName string
-
-@description('Container image for the agent-service service.')
-param agentServiceImageName string
 
 @description('Container image for the inventory-mcp service.')
 param inventoryMcpImageName string
@@ -126,7 +120,6 @@ var searchServiceName = '${environmentName}-search'
 
 var uiAppName = '${environmentName}-ui'
 var gatewayAppName = '${environmentName}-gateway'
-var agentServiceAppName = '${environmentName}-agent-service'
 var inventoryMcpAppName = '${environmentName}-inventory-mcp'
 var workOrdersApiAppName = '${environmentName}-work-orders-api'
 var statusDashboardAppName = '${environmentName}-status-dashboard'
@@ -345,45 +338,6 @@ module statusDashboard 'modules/container-app.bicep' = {
   }
 }
 
-module agentService 'modules/container-app.bicep' = {
-  name: 'agent-service-app'
-  params: {
-    name: agentServiceAppName
-    serviceName: 'agent-service'
-    location: location
-    environmentId: containerAppsEnvironment.outputs.id
-    containerImage: agentServiceImageName
-    targetPort: 8000
-    enableSystemIdentity: true
-    env: [
-      {
-        name: 'FOUNDRY_PROJECT_ENDPOINT'
-        value: foundryProjectEndpoint
-      }
-      {
-        name: 'FOUNDRY_MODEL'
-        value: foundryModel
-      }
-      {
-        name: 'TOOLBOX_MCP_URL'
-        value: toolboxMcpUrl
-      }
-      {
-        name: 'AZURE_SEARCH_ENDPOINT'
-        value: searchEndpoint
-      }
-      {
-        name: 'AZURE_SEARCH_INDEX'
-        value: searchIndexName
-      }
-    ]
-    registryServer: containerRegistry.outputs.loginServer
-    registryUsername: containerRegistry.outputs.username
-    registryPassword: containerRegistry.outputs.password
-    tags: tags
-  }
-}
-
 module gateway 'modules/container-app.bicep' = {
   name: 'gateway-app'
   params: {
@@ -398,10 +352,6 @@ module gateway 'modules/container-app.bicep' = {
       {
         name: 'AGENT_MODE'
         value: 'hosted'
-      }
-      {
-        name: 'CONTAINERAPP_AGENT_URL'
-        value: 'https://${agentService.outputs.fqdn}'
       }
       {
         name: 'HOSTED_AGENT_ENDPOINT'
@@ -474,15 +424,6 @@ module ui 'modules/container-app.bicep' = {
   }
 }
 
-// Agent-service and gateway identities call the Foundry project and models
-module agentServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
-  name: 'agent-service-ai-roles'
-  params: {
-    aiAccountName: aiProject.outputs.aiServicesAccountName
-    principalId: agentService.outputs.principalId
-  }
-}
-
 // The search service managed identity calls the Azure OpenAI deployment for
 // knowledge base query planning and answer synthesis.
 module searchServiceAiRoles 'modules/ai-account-role-assignments.bicep' = {
@@ -519,7 +460,6 @@ output storageAccountName string = storageAccount.outputs.name
 output registryLoginServer string = containerRegistry.outputs.loginServer
 output uiFqdn string = ui.outputs.fqdn
 output gatewayFqdn string = gateway.outputs.fqdn
-output agentServiceFqdn string = agentService.outputs.fqdn
 output inventoryMcpFqdn string = inventoryMcp.outputs.fqdn
 output workOrdersApiFqdn string = workOrdersApi.outputs.fqdn
 output statusDashboardFqdn string = statusDashboard.outputs.fqdn

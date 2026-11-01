@@ -30,13 +30,12 @@ app.add_middleware(
 sessions: dict[str, dict] = {}
 
 AGENT_MODE = os.getenv("AGENT_MODE", "local")
+if AGENT_MODE not in ("local", "hosted"):
+    raise ValueError("AGENT_MODE must be 'local' or 'hosted'")
 
 # Hosted agent config
 HOSTED_AGENT_ENDPOINT = os.getenv("HOSTED_AGENT_ENDPOINT", "")
 HOSTED_AGENT_NAME = os.getenv("HOSTED_AGENT_NAME", "fibey-agent")
-
-# Container App agent service config
-CONTAINERAPP_AGENT_URL = os.getenv("CONTAINERAPP_AGENT_URL", "")
 
 # Session-to-agent-session mapping for hosted mode conversation continuity
 _hosted_sessions: dict[str, str] = {}
@@ -323,48 +322,6 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
     yield _sse("done", "[DONE]")
 
 
-async def _run_containerapp(message: str, session_id: str) -> AsyncGenerator[str, None]:
-    """Proxy to the Container App agent service and relay SSE events."""
-    agent_url = CONTAINERAPP_AGENT_URL
-    if not agent_url:
-        yield _sse("error", {"message": "CONTAINERAPP_AGENT_URL not configured"})
-        yield _sse("done", "[DONE]")
-        return
-    
-    url = f"{agent_url.rstrip('/')}/api/chat"
-    body = {"message": message, "session_id": session_id}
-    completed = False
-    
-    try:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            async with client.stream(
-                "POST", url,
-                json=body,
-                headers={"Content-Type": "application/json"},
-            ) as resp:
-                if resp.status_code != 200:
-                    error_body = await resp.aread()
-                    logger.error("Agent service %s: %s", resp.status_code, error_body.decode()[:500])
-                    yield _sse("error", {"message": f"Agent service error {resp.status_code}: {error_body.decode()[:300]}"})
-                    yield _sse("done", "[DONE]")
-                    return
-                
-                # Relay SSE events from agent service to client
-                async for line in resp.aiter_lines():
-                    if line == "event: done":
-                        completed = True
-                    yield line + "\n"
-    
-    except httpx.TimeoutException:
-        yield _sse("error", {"message": "Agent service request timed out"})
-    except Exception as exc:
-        logger.exception("Container app agent proxy error")
-        yield _sse("error", {"message": f"Proxy error: {exc}"})
-    
-    if not completed:
-        yield _sse("done", "[DONE]")
-
-
 @app.post("/api/chat")
 async def chat(request: Request):
     body = await request.json()
@@ -376,9 +333,6 @@ async def chat(request: Request):
     if AGENT_MODE == "hosted":
         logger.info("Using hosted agent mode")
         generator = _run_hosted(message, session_id)
-    elif AGENT_MODE == "containerapp":
-        logger.info("Using containerapp mode, URL: %s", CONTAINERAPP_AGENT_URL)
-        generator = _run_containerapp(message, session_id)
     else:
         logger.info("Using local agent mode")
         generator = _run_local(message, session_id)

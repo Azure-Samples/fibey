@@ -99,11 +99,11 @@ Copy `.env.example` to `.env` and configure:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `AGENT_MODE` | No | `local` | `local`, `containerapp`, or `hosted` |
-| `FOUNDRY_PROJECT_ENDPOINT` | Hosted/containerapp mode | — | Foundry project endpoint |
+| `AGENT_MODE` | No | `local` | `local` or `hosted`; other values fail at startup |
+| `FOUNDRY_PROJECT_ENDPOINT` | Local mode | — | Foundry project endpoint for the in-process agent |
 | `FOUNDRY_MODEL` | No | `gpt-4.1-mini` | Model deployment name |
 | `HOSTED_AGENT_NAME` | Hosted mode | `fibey-agent` | Hosted agent name |
-| `CONTAINERAPP_AGENT_URL` | Containerapp mode | — | URL of the deployed agent-service Container App |
+| `HOSTED_AGENT_ENDPOINT` | Hosted mode | — | Foundry project endpoint for the gateway proxy |
 | `TOOLBOX_MCP_URL` | For real toolbox access | — | Foundry Toolbox MCP endpoint (without `api-version` — code appends `?api-version=v1`) |
 | `AZURE_SEARCH_ENDPOINT` | For direct KB fallback | — | Azure AI Search endpoint |
 | `AZURE_SEARCH_INDEX` | For direct KB fallback | `foundry-iq-docs-index` | Search index name |

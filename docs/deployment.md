@@ -2,13 +2,13 @@
 
 ## Overview
 
-Fibey Field Ops supports multiple deployment modes:
+Fibey Field Ops supports two agent modes:
 
-1. **Container Apps Mode** (Recommended) - Self-hosted agent in Azure Container Apps
-2. **Foundry Hosted Mode** - Uses Foundry's managed agent hosting
-3. **Local Development Mode** - For development and testing
+1. **Foundry Hosted Mode** (Production) - Uses Foundry's managed agent hosting
+2. **Local Development Mode** - Runs the agent in-process with the gateway
 
-This guide focuses on **Container Apps deployment** using `azd`.
+This guide deploys the agent to **Foundry hosted agents** and the UI, gateway,
+and operational backend services to **Azure Container Apps** using `azd`.
 
 ## Architecture
 
@@ -17,8 +17,8 @@ The deployment creates all resources in a single resource group (`rg-<env-name>`
 | Component | Azure Service | Source | Purpose |
 |-----------|---------------|--------|---------|
 | Chat UI | Container App | `ui/` | React frontend with activity sidebar |
-| Gateway | Container App | `src/fibey/gateway/` | FastAPI proxy (supports 3 modes) |
-| **Agent Service** | **Container App** | **src/fibey/agent/** | **Foundry agent + Toolbox MCP** |
+| Gateway | Container App | `src/fibey/gateway/` | FastAPI proxy (hosted mode in production) |
+| Hosted agent | Foundry hosted agent | `src/fibey/agent/hosted.py` | Field operations agent + Toolbox MCP |
 | Work Orders API | Container App | `services/work-orders-api/` | Work order CRUD backend |
 | Inventory MCP | Container App | `services/inventory-mcp/` | Inventory MCP server |
 | Status Dashboard | Container App | `services/status-dashboard/` | Network/service status page |
@@ -152,7 +152,6 @@ All managed identity permissions are assigned by Bicep during `azd provision`:
 
 | Identity | Role(s) | Scope |
 |----------|---------|-------|
-| agent-service Container App | Azure AI User (Foundry User), Cognitive Services User, Cognitive Services OpenAI User | AI Foundry account |
 | gateway Container App | Azure AI User (Foundry User), Cognitive Services User, Cognitive Services OpenAI User | AI Foundry account |
 | Foundry project + account | Search Index Data Reader | AI Search service |
 | AI Search | Storage Blob Data Reader | Storage account |
@@ -246,18 +245,10 @@ FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh
 
 ## Gateway Modes
 
-The gateway supports three deployment modes configured via `AGENT_MODE` environment variable:
-### 1. Container App Mode (Current Default)
-```bash
-AGENT_MODE=containerapp
-CONTAINERAPP_AGENT_URL=https://<env>-agent-service...
-```
-- Self-hosted agent in Container Apps
-- Full control over deployment and scaling
-- Direct Toolbox MCP integration with api-version=v1
-- Managed identity authentication
+The gateway supports two modes configured via the `AGENT_MODE` environment
+variable. Unsupported values cause the gateway to fail at startup.
 
-### 2. Foundry Hosted Mode
+### 1. Foundry Hosted Mode (Production)
 ```bash
 AGENT_MODE=hosted
 HOSTED_AGENT_ENDPOINT=https://<account>.services.ai.azure.com/api/projects/<project>
@@ -266,8 +257,9 @@ HOSTED_AGENT_NAME=fibey-agent
 - Uses Foundry's managed agent hosting
 - No container management needed
 - Requires hosted agent deployment in Foundry project
+- Configured automatically for the gateway by `azd up`
 
-### 3. Local Mode (Development Only)
+### 2. Local Mode (Default for Local Development)
 ```bash
 AGENT_MODE=local
 ```
@@ -313,38 +305,24 @@ az role assignment list \
 ```bash
 # Application logs
 az containerapp logs show \
-  --name <env>-agent-service \
+  --name <env>-gateway \
   --resource-group <resource-group> \
   --type console \
   --tail 100
 
 # System logs
 az containerapp logs show \
-  --name <env>-agent-service \
+  --name <env>-gateway \
   --resource-group <resource-group> \
   --type system \
   --tail 50
 ```
 
-### Manual Image Rebuild
-
-If you need to rebuild and redeploy the agent-service:
+### Redeploy the Hosted Agent
 
 ```bash
-# Build for linux/amd64 (required for Container Apps)
-docker build --platform linux/amd64 \
-  -f Dockerfile.agent-service \
-  -t <acr-name>.azurecr.io/fibey-agent-service:latest .
-
-# Push to ACR
-az acr login --name <acr-name>
-docker push <acr-name>.azurecr.io/fibey-agent-service:latest
-
-# Update container app
-az containerapp update \
-  --name <env>-agent-service \
-  --resource-group <resource-group> \
-  --image <acr-name>.azurecr.io/fibey-agent-service:latest
+# Rebuild Dockerfile.agent and deploy to the Foundry project
+azd deploy fibey-agent
 ```
 
 ## Verification
@@ -355,8 +333,8 @@ After deployment, test the stack:
 # Test UI
 curl https://<env>-ui.<env-subdomain>.azurecontainerapps.io/
 
-# Test agent-service health
-curl https://<env>-agent-service.<env-subdomain>.azurecontainerapps.io/api/health
+# Test gateway health (mode should be hosted)
+curl https://<env>-gateway.<env-subdomain>.azurecontainerapps.io/api/health
 
 # Test end-to-end chat via gateway
 curl -X POST https://<env>-gateway.<env-subdomain>.azurecontainerapps.io/api/chat \

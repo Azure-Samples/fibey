@@ -27,7 +27,7 @@ dashboard — through **one** endpoint: the **Azure AI Foundry Toolbox**.
               └────────────────┴───────────────────┴─────────────────┘
 ```
 
-The sample also ships **containerapp** and **hosted** modes — see
+Production uses **hosted** mode — see
 [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
@@ -73,8 +73,9 @@ Open the UI at <http://localhost:5173>.
 
 ## Deploy to Azure
 
-The full stack (UI, gateway, agent service, work-orders API, inventory MCP,
-AI Search, blob storage) deploys to Azure Container Apps via `azd`:
+`azd` deploys the agent to Foundry hosted agents, the UI, gateway, and
+operational backend services to Azure Container Apps, and provisions AI Search
+and blob storage:
 
 ```bash
 az login

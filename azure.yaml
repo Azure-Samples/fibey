@@ -7,13 +7,6 @@ name: fibey-agent
 metadata:
     template: fibey-agent
 services:
-    agent-service:
-        project: .
-        host: containerapp
-        language: docker
-        docker:
-            path: ./Dockerfile.agent-service
-            remoteBuild: true
     fibey-agent:
         project: .
         host: azure.ai.agent

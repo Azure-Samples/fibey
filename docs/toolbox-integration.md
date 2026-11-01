@@ -192,6 +192,5 @@ HTTP 403 when accessed through `ProjectManagedIdentity` auth.
 |---|---|
 | `src/fibey/agent/agent.py` | Local-mode agent + `_ToolboxAuth` |
 | `src/fibey/agent/hosted.py` | Foundry-hosted agent + `ToolboxAuth` + MCP SDK patch |
-| `src/fibey/agent/service.py` | Containerapp-mode self-hosted agent service |
 | `agent.yaml` | Hosted-agent definition (resources, env vars, protocol) |
 | `docs/deployment.md` | Hosted-agent deployment notes |
