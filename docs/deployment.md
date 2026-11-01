@@ -76,10 +76,22 @@ initialization can fail; finish the hook and redeploy the agent.
 The end-to-end run recorded in [#36](https://github.com/Azure-Samples/fibey/issues/36)
 completed `azd up` against an existing environment and verified hosted chat,
 multi-turn continuity, and toolbox-sourced field-briefing activity in the UI.
-A fresh resource-group deployment was attempted in
-[#42](https://github.com/Azure-Samples/fibey/issues/42) and stopped during
-provisioning on an overlong Container App name. A complete successful fresh
-deployment has **not** yet been verified.
+A recovered fresh resource-group deployment was verified on 2026-11-01 using
+`azd provision` followed by `azd deploy`, after resolving the naming failure
+in [#42](https://github.com/Azure-Samples/fibey/issues/42), applying the approved
+demo-only storage exception in
+[#43](https://github.com/Azure-Samples/fibey/issues/43), and constraining Inventory
+MCP to the compatible MCP 1.x SDK in
+[#44](https://github.com/Azure-Samples/fibey/issues/44).
+All seven UI checks passed (six real hosted workflows and one mocked error
+case), including Toolbox-sourced field briefing and citations. Same-session
+continuity and local-mode inventory lookup also passed.
+
+This run used a temporary workstation Search DNS override with normal TLS
+verification; no system DNS changes or fixed IPs were committed. The remaining
+resolver problem is tracked in
+[#45](https://github.com/Azure-Samples/fibey/issues/45).
+**An uninterrupted first-run `azd up` remains unverified.**
 
 **Important:** Do NOT include `?api-version=v1` in the `TOOLBOX_MCP_URL`. The agent code automatically appends this.
 
