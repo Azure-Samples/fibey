@@ -66,8 +66,10 @@ FastAPI API layer between the React UI and the field operations agent.
   The gateway translates Responses events into the same UI SSE contract and
   preserves skill names, discovered operations, arguments, and tool errors.
 - **History**: local `AgentSession`, or an in-memory per-session hosted
-  response-ID mapping sent as `previous_response_id`. Reset clears the
-  mapping; gateway restarts lose it.
+  response-ID mapping sent as `previous_response_id`. Gateway restarts lose
+  the mapping. Session reset currently clears only local state; reusing a
+  hosted session ID continues its prior conversation. Use a new session ID
+  to start a separate hosted conversation.
 
 ### Agent (`src/fibey/agent/`)
 

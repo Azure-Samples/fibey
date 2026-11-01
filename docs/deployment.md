@@ -248,8 +248,10 @@ azd deploy fibey-agent
 Local Toolbox authentication prefers Azure CLI, falls back to default Azure
 credentials, and supports an optional `TOOLBOX_API_KEY`. Hosted authentication
 uses platform managed identity with an azd credential fallback for development.
-Gateway restarts clear its hosted response-ID mapping; session reset clears
-the mapping for that UI session.
+Gateway restarts clear its hosted response-ID mapping. The session-reset
+endpoint currently clears only local state, not this hosted mapping; reusing
+the same hosted session ID continues the prior conversation. Use a new session
+ID to start a separate hosted conversation.
 
 ### Foundry Toolbox
 
