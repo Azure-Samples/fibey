@@ -80,6 +80,23 @@ A fresh resource-group deployment has **not** been exercised.
 
 **Important:** Do NOT include `?api-version=v1` in the `TOOLBOX_MCP_URL`. The agent code automatically appends this.
 
+Container App names retain `<environment>-<service>` when it fits Azure's
+32-character limit. Longer names use a shortened alphanumeric environment
+prefix and an eight-character resource token before the service suffix.
+Existing valid names are unchanged. Use `azd show -e <environment>` to find
+the actual resource names and endpoints rather than constructing them.
+
+Run the read-only Container App naming regression against an authorized test
+resource group:
+
+```bash
+FIBEY_INFRA_TEST_RESOURCE_GROUP=rg-<test-environment> \
+  uv run --no-sync python -m unittest discover -s tests -p test_infra_names.py
+```
+
+This checks resolved ARM what-if names; preview/template validation alone can
+miss nested resource-provider naming constraints.
+
 ## Environment variables
 
 Provisioned endpoints are produced as Bicep outputs and stored in the azd

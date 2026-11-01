@@ -118,11 +118,15 @@ var registryName = 'acr${take(sanitizedEnvironmentName, 15)}${take(resourceToken
 var storageAccountName = 'st${take(sanitizedEnvironmentName, 10)}${take(resourceToken, 12)}'
 var searchServiceName = '${environmentName}-search'
 
-var uiAppName = '${environmentName}-ui'
-var gatewayAppName = '${environmentName}-gateway'
-var inventoryMcpAppName = '${environmentName}-inventory-mcp'
-var workOrdersApiAppName = '${environmentName}-work-orders-api'
-var statusDashboardAppName = '${environmentName}-status-dashboard'
+func containerAppName(environment string, service string, token string) string => length('${environment}-${service}') <= 32
+  ? '${environment}-${service}'
+  : '${take(replace(environment, '-', ''), 32 - length(service) - 10)}-${take(token, 8)}-${service}'
+
+var uiAppName = containerAppName(environmentName, 'ui', resourceToken)
+var gatewayAppName = containerAppName(environmentName, 'gateway', resourceToken)
+var inventoryMcpAppName = containerAppName(environmentName, 'inventory-mcp', resourceToken)
+var workOrdersApiAppName = containerAppName(environmentName, 'work-orders-api', resourceToken)
+var statusDashboardAppName = containerAppName(environmentName, 'status-dashboard', resourceToken)
 
 var searchEndpoint = 'https://${searchServiceName}.search.windows.net'
 var knowledgeBaseMcpEndpoint = '${searchEndpoint}/knowledgebases/${knowledgeBaseName}/mcp?api-version=2026-05-01-preview'
