@@ -6,8 +6,8 @@ operational backends and serves versioned skills as MCP Resources.
 
 ![Foundry Toolbox integration: one authenticated agent connection branches into operational tool calls for inventory, work orders, and FoundryIQ, and MCP Resources for skill discovery and loading.](images/toolbox-integration.svg)
 
-[Editable Excalidraw source](images/toolbox-integration.excalidraw)
-(open in [Excalidraw](https://aka.ms/excalidraw)).
+[Editable Draw.io source](images/toolbox-integration.drawio)
+(open in [draw.io](https://app.diagrams.net/)).
 
 The arrows show requests and responses on the same MCP session. The tools
 surface provides `tool_search` and `call_tool` for inventory, Work Orders

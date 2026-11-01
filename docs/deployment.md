@@ -138,10 +138,10 @@ when choosing a different model.
 
 ![FoundryIQ knowledge path: source Markdown is uploaded to Blob Storage, ingested by an AI Search indexer, and exposed through an index, knowledge source, knowledge base, KB MCP endpoint, and Foundry connection.](images/knowledge-pipeline.svg)
 
-[Editable Excalidraw source](images/knowledge-pipeline.excalidraw)
-(open in [Excalidraw](https://aka.ms/excalidraw)).
+[Editable Draw.io source](images/knowledge-pipeline.drawio)
+(open in [draw.io](https://app.diagrams.net/)).
 
-Follow the numbered arrows for the content and retrieval path: Markdown in
+Follow the numbered stages for the content and retrieval path: Markdown in
 `services/foundry-iq-docs/docs/` is uploaded to Blob Storage and ingested by an
 AI Search indexer. The resulting index backs a knowledge source and knowledge
 base. The Toolbox accesses the KB MCP endpoint through a Foundry connection.

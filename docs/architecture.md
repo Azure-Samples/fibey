@@ -8,8 +8,8 @@ Fibey Field Ops is a fiber optics field operations demo built on **Azure AI Foun
 
 ![Fibey hosted system architecture: React UI exchanges streaming chat with the gateway, which calls the Foundry-hosted agent. The agent connects to the Toolbox for inventory, work orders, knowledge retrieval, and workflow skills. The status dashboard is separate.](images/system-architecture.svg)
 
-[Editable Excalidraw source](images/system-architecture.excalidraw)
-(open in [Excalidraw](https://aka.ms/excalidraw)).
+[Editable Draw.io source](images/system-architecture.drawio)
+(open in [draw.io](https://app.diagrams.net/)).
 
 The bidirectional arrows represent requests and their responses: UI chat and
 SSE updates pass through the gateway, the gateway calls the hosted Responses

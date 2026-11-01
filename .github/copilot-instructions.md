@@ -10,7 +10,7 @@ This repository is a **fiber optics field operations** demo built on Azure AI Fo
 
 ![Fibey local and hosted architecture overview](../docs/images/architecture-overview.svg)
 
-[Editable Excalidraw source](../docs/images/architecture-overview.excalidraw).
+[Editable Draw.io source](../docs/images/architecture-overview.drawio).
 The React UI exchanges streaming chat with the FastAPI gateway. The gateway
 runs the agent in-process locally or calls its Foundry-hosted Responses API.
 The agent connects to the Toolbox for inventory, work orders, knowledge

@@ -17,8 +17,9 @@ browser automation requires additional Toolbox configuration.
 
 ![Fibey architecture in local and hosted modes: React UI exchanges chat and SSE with the gateway, which runs the agent in-process or calls its Foundry-hosted Responses API. The agent uses the Toolbox for inventory, work orders, knowledge retrieval, and skills.](docs/images/architecture-overview.svg)
 
-[Editable Excalidraw source](docs/images/architecture-overview.excalidraw)
-(open in [Excalidraw](https://aka.ms/excalidraw)).
+[Editable Draw.io source](docs/images/architecture-overview.drawio)
+(open in [draw.io](https://app.diagrams.net/)).
+Uses [official Azure service icons](https://learn.microsoft.com/en-us/azure/architecture/icons/).
 
 The UI sends chat requests to the FastAPI gateway and receives streaming text,
 tool activity, citations, and errors. In **local** mode, the gateway runs the

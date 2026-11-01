@@ -15,8 +15,8 @@
 
 ![PON topology: OLT port, feeder fiber, primary splitter, distribution fiber, secondary splitter or terminal, drop fiber, and ONT/ONU.](../../../docs/images/pon-topology.svg)
 
-[Editable Excalidraw source](../../../docs/images/pon-topology.excalidraw)
-(open in [Excalidraw](https://aka.ms/excalidraw)).
+[Editable Draw.io source](../../../docs/images/pon-topology.drawio)
+(open in [draw.io](https://app.diagrams.net/)).
 
 Follow the numbered path from the OLT port through feeder fiber, the primary
 splitter, distribution fiber, a secondary splitter or terminal, and drop fiber
