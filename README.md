@@ -1,15 +1,17 @@
 # Fibey Field Ops
 
-Fibey is a runnable demo of an agent that connects to four different
-backend systems — inventory, work orders, a knowledge base, and a status
-dashboard — through **one** endpoint: the **Azure AI Foundry Toolbox**.
+Fibey is a runnable demo of an agent that connects to inventory, work orders,
+a knowledge base, and workflow skills through **one** endpoint: the
+**Foundry Toolbox**. A separate status dashboard is deployed; using it through
+browser automation requires additional Toolbox configuration.
 
 ## What the agent can do
 
 - Look up fiber parts, SKUs, stock levels, and inventory locations
 - View, create, and update work orders
 - Retrieve splicing procedures, safety protocols, and troubleshooting guidance
-- Check current network or service status
+- Follow skill-based workflows for field briefings and work order preparation
+- Check network or service status when a browser automation tool is configured
 
 ## Architecture (local mode)
 
@@ -27,16 +29,30 @@ dashboard — through **one** endpoint: the **Azure AI Foundry Toolbox**.
               └────────────────┴───────────────────┴─────────────────┘
 ```
 
-Production uses **hosted** mode — see
-[docs/architecture.md](docs/architecture.md).
+The Azure deployment uses **hosted** mode:
+
+```text
+React UI (Container App) -> FastAPI Gateway (Container App)
+    -> Foundry hosted agent (Responses API) -> Foundry Toolbox
+        -> inventory / work orders / knowledge base tools
+        -> MCP Resources: workflow skills
+```
+
+Both modes use `SkillsProvider(McpSkillsSource(session))` to read skills from
+the Toolbox through MCP Resources (SEP-2640), retaining `load_skill` activity
+in the sidebar. Python Agent Framework 1.5.0 lacks a native MCP-skills source,
+so this repository supplies the adapter. See
+[docs/toolbox-integration.md](docs/toolbox-integration.md).
 
 ## Prerequisites
 
 - Python 3.12+
 - Node.js 20+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Azure CLI (`az`) + Azure Developer CLI (`azd`) — only needed for cloud deploy
-- An Azure AI Foundry project with a deployed model and a configured Toolbox
+- Azure CLI (`az`) for local bearer-token authentication and cloud deployment;
+  Azure Developer CLI (`azd`) with the `azure.ai.agents` extension for deployment
+- An Azure AI Foundry project with a deployed model, a configured Toolbox,
+  and published skills
 
 ## Quickstart (local)
 
@@ -48,10 +64,13 @@ Production uses **hosted** mode — see
 cp .env.example .env
 # At minimum set FOUNDRY_PROJECT_ENDPOINT, FOUNDRY_MODEL, TOOLBOX_MCP_URL
 
-# 3) Start the gateway + UI
+# 3) Authenticate for local access to Foundry
+az login
+
+# 4) Start the gateway + UI
 ./scripts/start-dev.sh
 
-# 4) (optional) In separate terminals, start the local toolbox backends
+# 5) (optional) In separate terminals, start the local toolbox backends
 cd services/inventory-mcp     && uv sync && uv run python server.py
 cd services/work-orders-api   && uv sync && uv run python server.py
 cd services/status-dashboard/public && python -m http.server 8003
@@ -80,17 +99,26 @@ and blob storage:
 ```bash
 az login
 azd auth login
+azd extension install azure.ai.agents
 azd up
 ```
 
+The postprovision hook sets up the FoundryIQ knowledge base; the postdeploy
+hook publishes five skills from `skills/` and attaches them to the Toolbox.
+To publish edited skills, run `./scripts/setup-toolbox.sh`, then
+`azd deploy fibey-agent` to refresh the hosted skill cache. Toolboxes and
+skills require preview feature headers.
+
 See [docs/deployment.md](docs/deployment.md) for the full deployment guide,
-including FoundryIQ knowledge base setup and post-deploy RBAC.
+including publishing, automated RBAC, preview caveats, and first-deployment
+ordering. Hosted chat and skill loading were verified against an existing
+environment; a fresh resource-group deployment has not been exercised.
 
 ## Documentation
 
 | Doc | When to read it |
 |---|---|
-| [`docs/toolbox-integration.md`](docs/toolbox-integration.md) | The integration recipe (custom `httpx.Auth`, headers, MCP gotchas) |
+| [`docs/toolbox-integration.md`](docs/toolbox-integration.md) | MCP authentication, resource-based skills adapter, publishing, and preview gotchas |
 | [`docs/architecture.md`](docs/architecture.md) | Full system diagram, components, streaming protocol, agent modes |
 | [`docs/local-development.md`](docs/local-development.md) | All env vars, running individual services, testing the gateway API |
 | [`docs/deployment.md`](docs/deployment.md) | Azure deployment via `azd`, hosted-agent deployment, knowledge base setup, RBAC |
@@ -99,6 +127,7 @@ including FoundryIQ knowledge base setup and post-deploy RBAC.
 
 ```text
 src/fibey/                # Python package: agent + gateway
+skills/                   # SKILL.md publishing source; runtime reads Toolbox resources
 services/
   inventory-mcp/          # MCP inventory server (port 8001)
   work-orders-api/        # FastAPI work-orders service (port 8002)
@@ -106,7 +135,7 @@ services/
   foundry-iq-docs/        # Markdown source for the FoundryIQ knowledge base
 ui/                       # React + TypeScript + Tailwind frontend
 infra/                    # Bicep modules for Container Apps + AI Search + blob
-scripts/                  # setup.sh, start-dev.sh, setup-knowledge-base.sh
+scripts/                  # Local helpers, knowledge-base setup, Toolbox/skills publisher
 docs/                     # Architecture, deployment, local-dev, integration docs
 ```
 

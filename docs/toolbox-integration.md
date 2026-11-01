@@ -1,196 +1,171 @@
 # Toolbox Integration
 
-This sample connects to the **Azure AI Foundry Toolbox** via its **MCP
-(Model Context Protocol) Streamable HTTP** endpoint. The Toolbox acts as a
-single unified gateway to multiple operational tools — the agent makes one
-MCP connection, and the Toolbox dispatches calls to individual tools
-(inventory, work orders, FoundryIQ knowledge base, status dashboard) behind
-the scenes.
+Fibey connects to the **Foundry Toolbox** through one **MCP (Model Context
+Protocol) Streamable HTTP** endpoint. The Toolbox dispatches tool calls to
+operational backends and serves versioned skills as MCP Resources.
 
 ```text
-Field Ops Agent ──► Foundry Toolbox (single MCP endpoint)
-                         │
-        ┌────────────────┼──────────────────┬──────────────────┐
-        │                │                  │                  │
-   Inventory MCP   Work Orders OpenAPI  FoundryIQ KB    Status Dashboard
-   (Container App) (Container App)      (AI Search +    (browser automation)
-                                         Knowledge Base)
+Field Ops Agent (local or Foundry-hosted)
+    |
+    +-- Foundry Toolbox MCP
+            +-- tools: tool_search / call_tool
+            |       +-- Inventory MCP (Container App)
+            |       +-- Work Orders OpenAPI (Container App)
+            |       +-- FoundryIQ KB MCP (Azure AI Search)
+            +-- resources: skill index and SKILL.md content
 ```
 
-## Why one endpoint for many tools?
+The status dashboard is deployed as a separate Container App, but the current
+publisher does **not** register a browser automation tool. Status checks
+through browser automation require that additional Toolbox configuration.
 
-- **Single auth boundary.** One bearer token (or API key) authenticates the
-  agent to every backing tool — no per-tool credential plumbing.
-- **Smaller agent context.** Tool schemas are aggregated and surfaced through
-  one MCP descriptor, instead of registering N independent SDK clients.
-- **Centralized governance.** Tool inventory, allow-lists, and rate limits
-  live in the Toolbox configuration, not in agent code.
-- **Mix tool types.** The Toolbox can expose MCP servers, OpenAPI services,
-  and Azure AI Search knowledge bases under one interface.
+## MCP connection and authentication
 
-## Local mode — `MCPStreamableHTTPTool` with custom auth
+Both modes use Agent Framework's `MCPStreamableHTTPTool` with an explicit
+`httpx.AsyncClient`, `load_prompts=False`, and a 120-second HTTP timeout:
 
-In local mode the agent runs in-process and connects directly to the Toolbox
-MCP endpoint using `MCPStreamableHTTPTool` from the Agent Framework.
+| Mode | Entrypoint | Authentication |
+|------|------------|----------------|
+| Local | `src/fibey/agent/agent.py` | `_ToolboxAuth`: Azure CLI credential, default credential fallback; optional `TOOLBOX_API_KEY` uses `_ToolboxApiKeyAuth` |
+| Hosted | `src/fibey/agent/hosted.py` | `ToolboxAuth`: token provider backed by managed identity, with azd credential fallback for development |
 
-The key integration detail is a custom `httpx.Auth` that mints a fresh
-Azure bearer token on every request, including the MCP initialize handshake.
-The Toolbox also requires the `Foundry-Features: Toolboxes=V1Preview` header.
+Bearer tokens use `https://ai.azure.com/.default`. Custom `httpx.Auth` injects
+authentication on **every request**, including the MCP initialize handshake.
+Do not replace the explicit client with `FoundryChatClient.get_mcp_tool()`:
+that path did not carry the Toolbox bearer token through initialization.
 
-```python
-# src/fibey/agent/agent.py
-import httpx
-from agent_framework import MCPStreamableHTTPTool
+Each entrypoint adds `api-version=v1` to `TOOLBOX_MCP_URL` if absent and sends:
 
-_TOKEN_SCOPE = "https://ai.azure.com/.default"
-
-
-class _ToolboxAuth(httpx.Auth):
-    """httpx Auth that injects a fresh bearer token for Toolbox MCP."""
-
-    def __init__(self, credential):
-        self._credential = credential
-
-    def auth_flow(self, request):
-        token = self._credential.get_token(_TOKEN_SCOPE).token
-        request.headers["Authorization"] = f"Bearer {token}"
-        yield request
-
-
-def _create_toolbox_mcp(credential) -> MCPStreamableHTTPTool:
-    toolbox_url = os.getenv("TOOLBOX_MCP_URL", "")
-    if "api-version" not in toolbox_url:
-        sep = "&" if "?" in toolbox_url else "?"
-        toolbox_url = f"{toolbox_url}{sep}api-version=v1"
-
-    auth_http_client = httpx.AsyncClient(
-        auth=_ToolboxAuth(credential),
-        headers={"Foundry-Features": "Toolboxes=V1Preview"},
-        timeout=120.0,
-    )
-
-    return MCPStreamableHTTPTool(
-        name="toolbox",
-        url=toolbox_url,
-        http_client=auth_http_client,
-        load_prompts=False,
-    )
+```http
+Foundry-Features: Toolboxes=V1Preview,Skills=V1Preview
 ```
 
-### Gotchas discovered the hard way
+Use the bare provisioned Toolbox URL in configuration. The MCP API version is
+`v1`, not a date-based version. Both preview feature flags must reach resource
+requests as well as tool requests.
 
-1. **`api-version` is required.** The Toolbox MCP endpoint requires
-   `?api-version=v1` (not a date-based version). The code auto-appends it
-   if missing.
-2. **The header must be set on every request,** not just `initialize`.
-   That's why we use `httpx.Auth.auth_flow()` rather than a one-shot
-   `Authorization` header on the client.
-3. **The `Foundry-Features: Toolboxes=V1Preview` header must be present**
-   for the Toolbox to expose the V1 preview surface.
+## Tools configured by the publisher
 
-## Hosted mode — same MCP tool, platform-provided credential
+`scripts/setup-toolbox.sh` creates these definitions:
 
-When the agent is deployed to **Azure AI Foundry Agent Service** (hosted
-mode), the same `MCPStreamableHTTPTool` is used. The credential comes from
-the platform (chained managed identity + `AzureDeveloperCliCredential`),
-and the auth header is injected the same way:
+| Definition | Type | Backend |
+|------------|------|---------|
+| Tool Search | `toolbox_search_preview` | Toolbox built-in discovery |
+| Inventory | `mcp` | `https://<inventory-fqdn>/mcp`, server label `inventory` |
+| Work Orders | `openapi` | Deployed `/openapi.json` with the server URL injected; anonymous backend auth |
+| Knowledge Base | `mcp` | AI Search KB `/mcp?api-version=2026-05-01-preview`, server label `knowledge_base` |
 
-```python
-# src/fibey/agent/hosted.py
-from azure.identity import (
-    AzureDeveloperCliCredential, ChainedTokenCredential,
-    ManagedIdentityCredential, get_bearer_token_provider,
-)
+Tool search keeps the initial tool list small: `tool_search` discovers backend
+operations and `call_tool` invokes them. Skills are resources, not additional
+backend tool definitions.
 
-user_mi = ManagedIdentityCredential(client_id=os.getenv("AZURE_CLIENT_ID"))
-azd_cli = AzureDeveloperCliCredential(
-    tenant_id=os.getenv("AZURE_TENANT_ID"), process_timeout=60
-)
-credential = ChainedTokenCredential(user_mi, azd_cli)
+The knowledge tool uses `project_connection_id=kb-fibey-field-ops-kb`.
+Bicep creates that connection as `RemoteTool` with `ProjectManagedIdentity`,
+the KB MCP endpoint as its target, and `https://search.azure.com/` as its
+audience. The Foundry project and account identities receive Search Index Data
+Reader. This is a KB MCP connection, not a `CognitiveSearch`/API-key
+`azure_ai_search` tool.
 
-token_provider = get_bearer_token_provider(
-    credential, "https://ai.azure.com/.default"
-)
+### KB resource URI compatibility
 
+The hosted entrypoint relaxes MCP SDK resource-content URI fields to
+`str | None` and rebuilds the related models. This accommodates KB tool
+responses containing `uri: null` or `uri: ""`, which otherwise fail `AnyUrl`
+validation. The patch is hosted-only; it does not change the required skill
+URLs validated by `McpSkillsSource`.
 
-class ToolboxAuth(httpx.Auth):
-    def __init__(self, token_provider):
-        self._token_provider = token_provider
+## Toolbox skills: MCP Resources (SEP-2640)
 
-    def auth_flow(self, request):
-        request.headers["Authorization"] = f"Bearer {self._token_provider()}"
-        yield request
+The git source of truth is `skills/<name>/SKILL.md`. The five skills are
+`field-briefing`, `inventory-lookup`, `knowledge-retrieval`,
+`work-order-management`, and `work-order-preparation`. Runtime instructions
+come from the Toolbox:
 
+1. `resources/list` discovers `skill://index.json`, following pagination.
+2. `resources/read` reads that JSON index, including each skill's name,
+   description, and URL.
+3. `resources/read` fetches each referenced `SKILL.md` as text.
+4. `McpSkillsSource` converts the entries into `InlineSkill` objects for
+   `SkillsProvider`.
 
-toolbox_http_client = httpx.AsyncClient(
-    auth=ToolboxAuth(token_provider),
-    headers={"Foundry-Features": "Toolboxes=V1Preview"},
-    timeout=120.0,
-)
+**Python framework gap:** this repository pins Agent Framework 1.5.0, whose
+Python skills support has no native MCP source. C# has `UseMcpSkills`; Fibey's
+`src/fibey/agent/mcp_skills.py` implements Python's pluggable `SkillsSource`
+interface instead.
 
-toolbox_mcp_tool = MCPStreamableHTTPTool(
-    name="toolbox",
-    url=os.environ["TOOLBOX_MCP_URL"],
-    http_client=toolbox_http_client,
-    load_prompts=False,
-)
+Both modes use `SkillsProvider(McpSkillsSource(tool.session))` on the same
+initialized MCP session used for tool calls. The provider advertises skill
+descriptions and retains the **`load_skill`** tool, so the activity sidebar
+still shows which workflow is loaded.
+
+Hosted startup eagerly loads the resources before starting `ResponsesHostServer`.
+Local mode loads them through the provider when the agent runs. The source
+caches skills for its lifetime: hosted content stays cached until restart;
+local runs create a new source.
+
+### Failure behavior
+
+With `TOOLBOX_MCP_URL` configured, MCP list/read failures, invalid index JSON,
+skill resources without the required index, and empty/non-text skill bodies
+propagate as errors. Hosted initialization fails rather than serving with
+broken skills; local requests surface errors through the gateway stream.
+
+No skill resources, or an empty index, produces a warning and no skill tools.
+An unset Toolbox URL also warns and provides no Toolbox skills. Local mode
+can still use its separately configured direct knowledge-search fallback.
+
+## Publish workflow
+
+The `azure.yaml` **postdeploy** hook runs `scripts/setup-toolbox.sh` after
+backend deployment. It uses Foundry REST with Azure CLI tokens, `curl`, and
+Python 3; there is no `azd ai` publishing dependency.
+
+| Change | Publisher behavior |
+|--------|--------------------|
+| Nothing changed | Compare default skill content and attachment names; no new versions |
+| Skill content changed | Upload via `POST /skills/{name}/versions?api-version=v1` with `Skills=V1Preview`; promote the skill's `default_version` |
+| Skill attachment names changed | Publish a new Toolbox version with existing `tools` and new `skills`; promote the Toolbox's `default_version` |
+| Tool definitions changed | With `FORCE_TOOLBOX_UPDATE=1`, rebuild backend definitions and publish a new default Toolbox version |
+
+Toolbox versions are immutable, so every new version repeats its tool list.
+Skill references are unpinned:
+
+```json
+{
+  "skills": [
+    {"type": "skill_reference", "name": "field-briefing"}
+  ]
+}
 ```
 
-> **Note:** In hosted mode, do **not** use `FoundryChatClient.get_mcp_tool()`
-> for the Toolbox — that path doesn't carry the bearer token through the
-> MCP initialize handshake. Use `MCPStreamableHTTPTool` with the explicit
-> `httpx` client shown above.
+Each reference resolves the skill's default version. Publishing changed skill
+content does not require a new Toolbox version or agent-image change, but an
+already-running hosted source must be restarted to refresh its cache:
 
-### MCP SDK URI workaround
+```bash
+# Publish content/attachment changes, even if the Toolbox already exists
+./scripts/setup-toolbox.sh
 
-The Foundry Toolbox's Azure AI Search knowledge base returns resource
-content where `uri` may be `null` or `""`, which fails pydantic `AnyUrl`
-validation in the MCP SDK. The hosted entrypoint patches the SDK models to
-accept `str | None`:
-
-```python
-import mcp.types
-
-for cls in [
-    mcp.types.ResourceContents,
-    mcp.types.TextResourceContents,
-    mcp.types.BlobResourceContents,
-]:
-    cls.model_fields["uri"].annotation = str | None
-    cls.model_fields["uri"].default = None
-    cls.model_fields["uri"].metadata = []
-
-for cls in [
-    mcp.types.ResourceContents,
-    mcp.types.TextResourceContents,
-    mcp.types.BlobResourceContents,
-    mcp.types.EmbeddedResource,
-    mcp.types.CallToolResult,
-]:
-    cls.model_rebuild(force=True)
+# Refresh hosted tools and skill resources
+azd deploy fibey-agent
 ```
 
-## Configuring the Toolbox itself
+For changed backend URLs or OpenAPI definitions, use
+`FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh` before redeploying the agent.
 
-The Toolbox is created in the Foundry project and configured to dispatch to:
+## Preview caveats and code pointers
 
-| Backing tool | Toolbox tool type | Backend |
-|---|---|---|
-| Work Orders | OpenAPI | Container App (`work-orders-api`) |
-| Inventory | MCP (HTTP) | Container App (`inventory-mcp`) |
-| Knowledge Base | `azure_ai_search` | `foundry-iq-docs-index` (semantic) |
-| Status Dashboard | Browser automation | Container App (`status-dashboard`) |
-
-For the AI Search knowledge base, the Toolbox uses a `CognitiveSearch`
-connection (with `ApiKey` auth) and the `azure_ai_search` tool type — not
-a `RemoteTool` MCP pointer to the KB's `/mcp` endpoint. The latter returns
-HTTP 403 when accessed through `ProjectManagedIdentity` auth.
-
-## Where to look in the code
+Toolboxes and skills require `Toolboxes=V1Preview` and `Skills=V1Preview`;
+KB MCP uses `2026-05-01-preview`. These preview contracts and hosted-agent
+regional availability may change. See [deployment.md](deployment.md) for the
+hosted flow, RBAC, and deployment verification limits.
 
 | File | Purpose |
-|---|---|
-| `src/fibey/agent/agent.py` | Local-mode agent + `_ToolboxAuth` |
-| `src/fibey/agent/hosted.py` | Foundry-hosted agent + `ToolboxAuth` + MCP SDK patch |
-| `agent.yaml` | Hosted-agent definition (resources, env vars, protocol) |
-| `docs/deployment.md` | Hosted-agent deployment notes |
+|------|---------|
+| `src/fibey/agent/agent.py` | Local agent, Toolbox authentication, skills provider |
+| `src/fibey/agent/hosted.py` | Hosted Responses server, authentication, KB URI workaround |
+| `src/fibey/agent/mcp_skills.py` | MCP Resources-to-SkillsSource adapter |
+| `skills/` | Version-controlled publishing source |
+| `scripts/setup-toolbox.sh` | Skill and Toolbox version publication |
+| `agent.yaml` / `azure.yaml` | Hosted definition and azd deployment/hooks |
+| `tests/test_mcp_skills.py` | Resource discovery, loading, warnings, and error cases |
