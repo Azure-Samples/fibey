@@ -118,9 +118,15 @@ var registryName = 'acr${take(sanitizedEnvironmentName, 15)}${take(resourceToken
 var storageAccountName = 'st${take(sanitizedEnvironmentName, 10)}${take(resourceToken, 12)}'
 var searchServiceName = '${environmentName}-search'
 
-func containerAppName(environment string, service string, token string) string => length('${environment}-${service}') <= 32
-  ? '${environment}-${service}'
-  : '${take(replace(environment, '-', ''), 32 - length(service) - 10)}-${take(token, 8)}-${service}'
+func containerAppName(environment string, service string, token string) string => contains([
+  length('${environment}-${service}') <= 32
+  !empty(environment)
+  contains('abcdefghijklmnopqrstuvwxyz', take(environment, 1))
+  !contains('${environment}-${service}', '--')
+  length(filter(range(0, length(environment)), i => !contains('abcdefghijklmnopqrstuvwxyz0123456789-', substring(environment, i, 1)))) == 0
+], false)
+  ? 'fibey-${take(token, 8)}-${service}'
+  : '${environment}-${service}'
 
 var uiAppName = containerAppName(environmentName, 'ui', resourceToken)
 var gatewayAppName = containerAppName(environmentName, 'gateway', resourceToken)

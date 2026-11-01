@@ -33,6 +33,7 @@ class ContainerAppNameTests(unittest.TestCase):
                 f"principalId={principal_id}",
                 "--validation-level", "Template",
                 "--no-pretty-print",
+                "--only-show-errors",
                 "--query", "changes[?changeType!='Ignore'].resourceId",
                 "-o", "json",
             ],
@@ -76,6 +77,14 @@ class ContainerAppNameTests(unittest.TestCase):
             self.assertLessEqual(len(name), 32, name)
             self.assertRegex(name, r"^[a-z][a-z0-9-]*[a-z0-9]$")
             self.assertNotIn("--", name)
+
+    def test_invalid_environment_prefixes_produce_valid_app_names(self):
+        for environment_name in ("Fibey-dev", "1" + "a" * 63, "fibey_qa"):
+            with self.subTest(environment_name=environment_name):
+                for name in self.planned_names(environment_name):
+                    self.assertLessEqual(len(name), 32, name)
+                    self.assertRegex(name, r"^[a-z][a-z0-9-]*[a-z0-9]$")
+                    self.assertNotIn("--", name)
 
 
 if __name__ == "__main__":

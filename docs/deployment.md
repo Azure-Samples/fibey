@@ -76,15 +76,19 @@ initialization can fail; finish the hook and redeploy the agent.
 The end-to-end run recorded in [#36](https://github.com/Azure-Samples/fibey/issues/36)
 completed `azd up` against an existing environment and verified hosted chat,
 multi-turn continuity, and toolbox-sourced field-briefing activity in the UI.
-A fresh resource-group deployment has **not** been exercised.
+A fresh resource-group deployment was attempted in
+[#42](https://github.com/Azure-Samples/fibey/issues/42) and stopped during
+provisioning on an overlong Container App name. A complete successful fresh
+deployment has **not** yet been verified.
 
 **Important:** Do NOT include `?api-version=v1` in the `TOOLBOX_MCP_URL`. The agent code automatically appends this.
 
-Container App names retain `<environment>-<service>` when it fits Azure's
-32-character limit. Longer names use a shortened alphanumeric environment
-prefix and an eight-character resource token before the service suffix.
-Existing valid names are unchanged. Use `azd show -e <environment>` to find
-the actual resource names and endpoints rather than constructing them.
+Container App names retain `<environment>-<service>` when they satisfy Azure's
+naming rules, including the 32-character limit. Otherwise, they use
+`fibey-<eight-character-resource-token>-<service>`. Existing valid names are
+unchanged. Other Azure resources retain their own environment-name constraints.
+Use `azd show -e <environment>` to find the actual resource names and endpoints
+rather than constructing them.
 
 Run the read-only Container App naming regression against an authorized test
 resource group:
