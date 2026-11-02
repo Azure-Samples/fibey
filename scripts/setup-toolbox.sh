@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Create (or update) the Foundry Toolbox that dispatches to the Fibey backend
-# tools: inventory MCP server, work orders OpenAPI, and the FoundryIQ knowledge
-# base MCP endpoint. Runs as part of the azd postprovision hook.
+# tools: inventory MCP, work orders OpenAPI, FoundryIQ, and Browser Automation.
+# Runs as part of the azd postdeploy hook.
 set -euo pipefail
 
 # ─── Resolve configuration from the azd environment ────────────────────
@@ -18,9 +18,10 @@ KB_NAME="${KB_NAME:-$(env_value KB_NAME)}"
 KB_NAME="${KB_NAME:-fibey-field-ops-kb}"
 SEARCH_ENDPOINT="${AZURE_SEARCH_ENDPOINT:-$(env_value AZURE_SEARCH_ENDPOINT)}"
 KB_CONNECTION_NAME="kb-${KB_NAME}"
+BROWSER_CONNECTION_NAME="${BROWSER_AUTOMATION_CONNECTION_NAME:-$(env_value BROWSER_AUTOMATION_CONNECTION_NAME)}"
 
-if [ -z "$PROJECT_ENDPOINT" ] || [ -z "$INVENTORY_FQDN" ] || [ -z "$WORK_ORDERS_FQDN" ] || [ -z "$SEARCH_ENDPOINT" ]; then
-  echo "Missing required values (FOUNDRY_PROJECT_ENDPOINT, inventoryMcpFqdn, workOrdersApiFqdn, AZURE_SEARCH_ENDPOINT)."
+if [ -z "$PROJECT_ENDPOINT" ] || [ -z "$INVENTORY_FQDN" ] || [ -z "$WORK_ORDERS_FQDN" ] || [ -z "$SEARCH_ENDPOINT" ] || [ -z "$BROWSER_CONNECTION_NAME" ]; then
+  echo "Missing required values (FOUNDRY_PROJECT_ENDPOINT, inventoryMcpFqdn, workOrdersApiFqdn, AZURE_SEARCH_ENDPOINT, BROWSER_AUTOMATION_CONNECTION_NAME)."
   echo "Run 'azd provision' first."
   exit 1
 fi
@@ -33,9 +34,25 @@ echo "Toolbox         : $TOOLBOX_NAME"
 echo "Inventory MCP   : https://${INVENTORY_FQDN}/mcp"
 echo "Work Orders API : https://${WORK_ORDERS_FQDN}"
 echo "Knowledge base  : $KB_MCP_ENDPOINT (connection: ${KB_CONNECTION_NAME})"
+echo "Browser         : $BROWSER_CONNECTION_NAME"
 echo ""
 
 TOKEN=$(az account get-access-token --scope "https://ai.azure.com/.default" --query accessToken -o tsv)
+
+BROWSER_CONNECTION=$(curl --fail-with-body -sS \
+  "${PROJECT_ENDPOINT}/connections/${BROWSER_CONNECTION_NAME}?api-version=v1" \
+  -H "Authorization: Bearer $TOKEN")
+BROWSER_TOOL_JSON=$(echo "$BROWSER_CONNECTION" | python3 -c "
+import json, sys
+connection_id = json.load(sys.stdin)['id']
+if not isinstance(connection_id, str) or not connection_id:
+    raise ValueError('Browser Automation connection has no resource ID')
+json.dump({
+    'type': 'browser_automation',
+    'name': 'browser_automation',
+    'browser_automation': {'connection': {'project_connection_id': connection_id}},
+}, sys.stdout)
+")
 
 SKILLS_DIR="${SKILLS_DIR:-$(cd "$(dirname "$0")/.." && pwd)/skills}"
 SKILL_NAMES=()
@@ -124,12 +141,17 @@ publish_toolbox_version() {
   echo "  MCP endpoint: ${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}/mcp?api-version=v1"
 }
 
-# ─── Toolbox already exists: only publish a new version if skills changed ──
+# ─── Toolbox already exists: reconcile browser and skill attachments ───
 EXISTING=$(curl -sS -w "\n%{http_code}" \
   "${PROJECT_ENDPOINT}/toolboxes/${TOOLBOX_NAME}?api-version=v1" \
   -H "Authorization: Bearer ${TOKEN}")
 EXISTING_STATUS="${EXISTING##*$'\n'}"
 EXISTING_BODY="${EXISTING%$'\n'*}"
+
+if [ "$EXISTING_STATUS" != "200" ] && [ "$EXISTING_STATUS" != "404" ]; then
+  echo "Unexpected HTTP ${EXISTING_STATUS} while checking for the Toolbox." >&2
+  exit 1
+fi
 
 if [ "$EXISTING_STATUS" = "200" ] && [ "${FORCE_TOOLBOX_UPDATE:-0}" != "1" ]; then
   DEFAULT_VERSION=$(echo "$EXISTING_BODY" | python3 -c "import json,sys; print(json.load(sys.stdin)['default_version'])")
@@ -139,26 +161,33 @@ if [ "$EXISTING_STATUS" = "200" ] && [ "${FORCE_TOOLBOX_UPDATE:-0}" != "1" ]; th
 
   if echo "$CURRENT" | python3 -c "
 import json, sys
-current = json.load(sys.stdin).get('skills') or []
-wanted = json.loads(sys.argv[1])
-sys.exit(0 if {s['name'] for s in current} == {s['name'] for s in wanted} else 1)
-" "$SKILLS_JSON"; then
-    echo "✓ Toolbox '${TOOLBOX_NAME}' already exists with the current skills — nothing to publish."
+current = json.load(sys.stdin)
+wanted_skills = json.loads(sys.argv[1])
+wanted_browser = json.loads(sys.argv[2])
+browsers = [t for t in current['tools'] if t['type'] == 'browser_automation']
+sys.exit(0 if (
+    {s['name'] for s in current.get('skills') or []} == {s['name'] for s in wanted_skills}
+    and [(t.get('name'), t['browser_automation']['connection']['project_connection_id']) for t in browsers]
+        == [(wanted_browser['name'], wanted_browser['browser_automation']['connection']['project_connection_id'])]
+) else 1)
+" "$SKILLS_JSON" "$BROWSER_TOOL_JSON"; then
+    echo "✓ Toolbox '${TOOLBOX_NAME}' already exists with the current browser and skills — nothing to publish."
     echo "  Set FORCE_TOOLBOX_UPDATE=1 to rebuild the tools and publish a new version."
     exit 0
   fi
 
   echo ""
-  echo "=== Attaching skills to existing toolbox (reusing tools from version ${DEFAULT_VERSION}) ==="
+  echo "=== Updating browser and skill attachments (reusing other tools from version ${DEFAULT_VERSION}) ==="
   BODY=$(echo "$CURRENT" | python3 -c "
 import json, sys
 current = json.load(sys.stdin)
 json.dump({
     'description': current.get('description', ''),
-    'tools': current['tools'],
+    'tools': [t for t in current['tools'] if t['type'] != 'browser_automation']
+        + [json.loads(sys.argv[2])],
     'skills': json.loads(sys.argv[1]),
 }, sys.stdout)
-" "$SKILLS_JSON")
+" "$SKILLS_JSON" "$BROWSER_TOOL_JSON")
   publish_toolbox_version "$BODY"
   exit 0
 fi
@@ -198,7 +227,7 @@ import json, sys
 work_orders_spec = json.loads(sys.argv[1])
 
 body = {
-    'description': 'Fibey Field Ops toolbox: inventory, work orders, and knowledge base.',
+    'description': 'Fibey Field Ops toolbox: inventory, work orders, knowledge base, and Browser Automation.',
     'tools': [
         # Enables tool search (preview): other tools are discovered via the
         # tool_search tool instead of being listed upfront to the model.
@@ -227,10 +256,11 @@ body = {
             'require_approval': 'never',
             'project_connection_id': '${KB_CONNECTION_NAME}',
         },
+        json.loads(sys.argv[3]),
     ],
     'skills': json.loads(sys.argv[2]),
 }
 json.dump(body, sys.stdout)
-" "$WORK_ORDERS_SPEC" "$SKILLS_JSON")
+" "$WORK_ORDERS_SPEC" "$SKILLS_JSON" "$BROWSER_TOOL_JSON")
 
 publish_toolbox_version "$BODY"

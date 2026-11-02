@@ -14,9 +14,9 @@ surface provides `tool_search` and `call_tool` for inventory, Work Orders
 OpenAPI, and FoundryIQ KB MCP. The resources surface provides the skill index
 and `SKILL.md` content consumed by `McpSkillsSource` and `SkillsProvider`.
 
-The status dashboard is deployed as a separate Container App, but the current
-publisher does **not** register a browser automation tool. Status checks
-through browser automation require that additional Toolbox configuration.
+The Status Dashboard is a public, read-only Container App. The publisher
+registers Browser Automation through the provisioned Playwright workspace
+connection; `STATUS_DASHBOARD_URL` exports the dashboard's HTTPS address.
 
 ## MCP connection and authentication
 
@@ -53,10 +53,18 @@ requests as well as tool requests.
 | Inventory | `mcp` | `https://<inventory-fqdn>/mcp`, server label `inventory` |
 | Work Orders | `openapi` | Deployed `/openapi.json` with the server URL injected; anonymous backend auth |
 | Knowledge Base | `mcp` | AI Search KB `/mcp?api-version=2026-05-01-preview`, server label `knowledge_base` |
+| Browser Automation | `browser_automation` | Playwright workspace through the `browser-automation` project connection |
 
 Tool search keeps the initial tool list small: `tool_search` discovers backend
 operations and `call_tool` invokes them. Skills are resources, not additional
 backend tool definitions.
+
+Browser Automation uses the native Toolbox definition, not an ordinary `mcp`
+entry. The publisher resolves `BROWSER_AUTOMATION_CONNECTION_NAME` through
+the project's connections API and supplies its full resource ID in
+`browser_automation.connection.project_connection_id`. Its explicit
+`name: browser_automation` is required alongside Tool Search: the Toolbox
+allows only one definition without an identifier.
 
 The knowledge tool uses `project_connection_id=kb-fibey-field-ops-kb`.
 Bicep creates that connection as `RemoteTool` with `ProjectManagedIdentity`,
@@ -121,9 +129,10 @@ Python 3; there is no `azd ai` publishing dependency.
 
 | Change | Publisher behavior |
 |--------|--------------------|
-| Nothing changed | Compare default skill content and attachment names; no new versions |
+| Nothing changed | Compare default skill content, skill attachment names, and the browser connection/name; no new versions |
 | Skill content changed | Upload via `POST /skills/{name}/versions?api-version=v1` with `Skills=V1Preview`; promote the skill's `default_version` |
 | Skill attachment names changed | Publish a new Toolbox version with existing `tools` and new `skills`; promote the Toolbox's `default_version` |
+| Browser missing or connection/name changed | Publish a new Toolbox version with the desired browser entry, preserving other tools and current skill references; promote the Toolbox's `default_version` |
 | Tool definitions changed | With `FORCE_TOOLBOX_UPDATE=1`, rebuild backend definitions and publish a new default Toolbox version |
 
 Toolbox versions are immutable, so every new version repeats its tool list.
@@ -151,6 +160,8 @@ azd deploy fibey-agent
 
 For changed backend URLs or OpenAPI definitions, use
 `FORCE_TOOLBOX_UPDATE=1 ./scripts/setup-toolbox.sh` before redeploying the agent.
+Browser connection changes are reconciled without the force flag. Missing or
+inaccessible connections fail publication rather than silently omitting browsing.
 
 ## Preview caveats and code pointers
 

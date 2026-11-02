@@ -163,8 +163,10 @@ hostname, with normal TLS verification. The helper was removed afterward;
 no system DNS changes or fixed IPs were committed. Native workstation DNS
 and uninterrupted first-run deployment remain unverified.
 
-The Toolbox publisher does **not** yet attach Browser Automation, so this
-infrastructure change alone does not enable Status Dashboard browsing.
+The postdeploy Toolbox publisher attaches Browser Automation using this
+connection. The Status Dashboard has external ingress so the managed browsers
+can reach it; provisioning exports its HTTPS address as `STATUS_DASHBOARD_URL`.
+Private browsing requires separate networking configuration and is out of scope.
 
 ## Environment variables
 
@@ -176,6 +178,8 @@ environment automatically. Useful configuration values:
 | `FOUNDRY_MODEL` | `gpt-4.1-mini` | Model deployment name |
 | `FOUNDRY_MODEL_CAPACITY` | `100` | Model deployment capacity (TPM, in thousands). Preserved across `azd up` runs |
 | `TOOLBOX_NAME` | `fibey-toolbox` | Foundry Toolbox name |
+| `BROWSER_AUTOMATION_CONNECTION_NAME` | `browser-automation` | Provisioned Playwright connection used by the Toolbox publisher |
+| `STATUS_DASHBOARD_URL` | provisioned dashboard HTTPS address | Public, read-only Status Dashboard |
 | `KB_NAME` | `fibey-field-ops-kb` | Knowledge base name |
 | `AZURE_SEARCH_INDEX` | `foundry-iq-docs-index` | Search index name |
 | `AZURE_AI_PROJECT_NAME` | `fibey-project` | Foundry project name |
@@ -249,7 +253,7 @@ The knowledge base retrieval was validated with semantic `intents` requests agai
 
 - All Container Apps are configured with **minReplicas: 1** to avoid cold starts.
 - The FoundryIQ documents are uploaded to blob storage and indexed separately — they are not part of the container deployment.
-- The status dashboard can be set to internal-only ingress if browser automation is the only consumer.
+- The Status Dashboard requires external ingress for the managed Playwright browsers; it contains only demo data. Do not switch to internal-only ingress without configuring private browsing networking.
 - Infrastructure definitions live in `infra/` (Bicep). The Foundry Toolbox and skills are published by the **postdeploy** hook (`scripts/setup-toolbox.sh`).
 - Blob uploads use authenticated access. Shared keys and anonymous blob access remain disabled; storage public networking is enabled for the upload hook. The storage security-control exemption is opt-in, not a production recommendation.
 
@@ -352,10 +356,13 @@ the postdeploy hook (`scripts/setup-toolbox.sh`):
 | Work Orders | OpenAPI (anonymous) | Container App (`work-orders-api`) |
 | Inventory | MCP | Container App (`inventory-mcp`) |
 | Knowledge Base | MCP via `kb-fibey-field-ops-kb` connection | AI Search knowledge base (`fibey-field-ops-kb`) |
+| Browser Automation | `browser_automation` via `browser-automation` connection | Playwright workspace |
 
-The status dashboard is deployed separately; the publisher does not register
-browser automation. Add that Toolbox configuration before using it for status
-checks.
+The Status Dashboard is deployed separately with public ingress. The native
+browser definition has `name: browser_automation` so it can coexist with
+Tool Search, and references the connection's full resource ID. Registering the
+tool does not by itself enforce the agent's read-only, dashboard-only policy;
+that belongs to the agent's runtime instructions.
 
 **Tool search** is enabled on the toolbox: the initial `tools/list` exposes
 only `tool_search` and `call_tool`, and the agent discovers backend tools on
@@ -375,9 +382,10 @@ The hook checks and publishes skills **even when the Toolbox already exists**:
    `POST /skills/{name}/versions?api-version=v1` and promoted to `default_version`.
 2. Attach skills as unpinned `{"type":"skill_reference","name":"..."}` entries,
    resolving each skill's default version.
-3. If attachment names changed, create an immutable Toolbox version repeating
-   the existing `tools` and promote it to default. Content-only changes need
-   no new Toolbox version.
+3. If skill attachment names or the browser connection/name changed (including
+   a missing browser entry), create an immutable Toolbox version preserving
+   the other existing `tools` and promote it to default. Content-only skill
+   changes need no new Toolbox version. An unchanged rerun creates no version.
 
 To publish edited skill content or changed attachments:
 
@@ -396,6 +404,16 @@ Publishing uses REST (`curl`, Azure CLI authentication, and Python 3), not
 `azd ai`. Running the publisher alone does not restart agents: hosted skills
 are cached for the lifetime of the MCP source. After changing skills, run
 `azd deploy fibey-agent` to refresh the hosted runtime.
+
+Verification for #48 used the existing `fibey-dev` environment in
+`rg-fibey-dev`: the dashboard's public `/healthz` returned HTTP 200, the
+publisher promoted Toolbox version 11 with Browser Automation while preserving
+the other tools and five skill references, and a second run created no version.
+MCP `tool_search` discovered the `browser_automation___browser_*` operations,
+and the public root page served the expected network status HTML.
+`STATUS_DASHBOARD_URL` was also saved in that azd environment. The Bicep output
+is compiled and covered locally; no fresh resource-group deployment or
+agent-driven browser session was run for this ticket.
 
 ### Skills and preview caveats
 

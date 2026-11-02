@@ -2,8 +2,41 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import unittest
+
+
+@unittest.skipUnless(shutil.which("az"), "Azure CLI is required to compile Bicep")
+class StatusDashboardDeploymentTests(unittest.TestCase):
+    def test_dashboard_is_public_and_its_https_url_is_exported_to_azd(self):
+        result = subprocess.run(
+            [
+                "az", "bicep", "build",
+                "--file", str(Path(__file__).resolve().parents[1] / "infra/main.bicep"),
+                "--stdout", "--only-show-errors",
+            ],
+            check=True, capture_output=True, text=True, timeout=120,
+        )
+        template = json.loads(result.stdout)
+        resources = next(
+            resource["properties"]["template"]
+            for resource in template["resources"]
+            if resource["type"] == "Microsoft.Resources/deployments"
+        )
+        dashboard = resources["resources"]["statusDashboard"]
+        app = dashboard["properties"]["template"]["resources"][0]
+        self.assertIs(app["properties"]["configuration"]["ingress"]["external"], True)
+        self.assertEqual(dashboard["properties"]["parameters"]["targetPort"]["value"], 8003)
+        self.assertEqual(
+            resources["outputs"]["statusDashboardUrl"]["value"],
+            "[format('https://{0}', reference('statusDashboard').outputs.fqdn.value)]",
+        )
+        self.assertTrue(
+            template["outputs"]["STATUS_DASHBOARD_URL"]["value"].endswith(
+                ".outputs.statusDashboardUrl.value]"
+            ),
+        )
 
 
 @unittest.skipUnless(

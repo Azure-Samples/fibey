@@ -527,6 +527,7 @@ output gatewayFqdn string = gateway.outputs.fqdn
 output inventoryMcpFqdn string = inventoryMcp.outputs.fqdn
 output workOrdersApiFqdn string = workOrdersApi.outputs.fqdn
 output statusDashboardFqdn string = statusDashboard.outputs.fqdn
+output statusDashboardUrl string = 'https://${statusDashboard.outputs.fqdn}'
 output playwrightWorkspaceName string = playwrightWorkspace.outputs.name
 output playwrightWorkspaceId string = playwrightWorkspace.outputs.id
 output browserAutomationConnectionName string = browserAutomationConnection.outputs.connectionName

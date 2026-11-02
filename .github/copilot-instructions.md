@@ -14,8 +14,9 @@ This repository is a **fiber optics field operations** demo built on Azure AI Fo
 The React UI exchanges streaming chat with the FastAPI gateway. The gateway
 runs the agent in-process locally or calls its Foundry-hosted Responses API.
 The agent connects to the Toolbox for inventory, work orders, knowledge
-retrieval, and workflow skills. Browser automation for the separate status
-dashboard requires additional Toolbox configuration.
+retrieval, workflow skills, and Browser Automation. The publisher registers
+Browser Automation through the provisioned Playwright connection; the separate
+Status Dashboard has public ingress and exports `STATUS_DASHBOARD_URL`.
 
 - **Backend**: Python 3.12+, FastAPI, Microsoft Agent Framework
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS

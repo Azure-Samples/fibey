@@ -40,7 +40,10 @@ and resolve each skill's `default_version`.
 Run `./scripts/setup-toolbox.sh` for skill changes, or set
 `FORCE_TOOLBOX_UPDATE=1` to rebuild tool definitions; redeploy `fibey-agent`
 after publication to refresh its cache. The publisher registers inventory,
-work orders, and KB MCP tools, not browser automation for the status dashboard.
+work orders, KB MCP, and native Browser Automation through the provisioned
+`BROWSER_AUTOMATION_CONNECTION_NAME`. Browser connection/name changes create
+a new Toolbox version preserving other tools. The public dashboard URL is
+exported as `STATUS_DASHBOARD_URL`; managed browsers require external ingress.
 
 Toolboxes/skills and the hosted Responses/KB APIs use preview contracts.
 The existing-environment deployment and hosted UI flow were verified; a fresh

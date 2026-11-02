@@ -188,4 +188,5 @@ output gatewayFqdn string = resources.outputs.gatewayFqdn
 output inventoryMcpFqdn string = resources.outputs.inventoryMcpFqdn
 output workOrdersApiFqdn string = resources.outputs.workOrdersApiFqdn
 output statusDashboardFqdn string = resources.outputs.statusDashboardFqdn
+output STATUS_DASHBOARD_URL string = resources.outputs.statusDashboardUrl
 output registryLoginServer string = resources.outputs.registryLoginServer
