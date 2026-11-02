@@ -137,7 +137,32 @@ Provisioning exports `AZURE_PLAYWRIGHT_WORKSPACE_NAME`,
 `AZURE_PLAYWRIGHT_WORKSPACE_ID`, and `BROWSER_AUTOMATION_CONNECTION_NAME`.
 The connection should appear under the Foundry project's connected resources.
 Read-only ARM what-if checks cover workspace/connection naming and unsupported
-regions; live provisioning and connection visibility have not been verified.
+regions.
+
+Live verification for #47 completed on 2026-11-01 against the existing
+`fibey-dev` environment and `rg-fibey-dev` resource group:
+
+- Registered `Microsoft.LoadTestService` using
+  `az provider register --namespace Microsoft.LoadTestService --wait`.
+- Ran `azd provision -e fibey-dev --no-prompt`; infrastructure and the
+  knowledge-base postprovision hook succeeded.
+- Confirmed `pww-p7ramadxnx4wg` is `Succeeded` in `eastus`, with local
+  authentication and regional affinity disabled.
+- Listed `browser-automation` through both the Foundry project's ARM
+  connections API and `azd ai connection list -e fibey-dev -o json`.
+  The connection uses the workspace MCP endpoint, `ProjectManagedIdentity`,
+  and the expected audience.
+- Confirmed the project's managed identity has Playwright Workspace Contributor
+  at the exact workspace scope. Existing app images were preserved, UI and
+  dashboard endpoints returned HTTP 200, the gateway remained healthy in
+  hosted mode, and all eight knowledge-base documents indexed successfully.
+
+The existing workstation DNS limitation from #45 also affects the dev Search
+endpoint. This run used a temporary, command-scoped curl DNS override for that
+hostname, with normal TLS verification. The helper was removed afterward;
+no system DNS changes or fixed IPs were committed. Native workstation DNS
+and uninterrupted first-run deployment remain unverified.
+
 The Toolbox publisher does **not** yet attach Browser Automation, so this
 infrastructure change alone does not enable Status Dashboard browsing.
 
