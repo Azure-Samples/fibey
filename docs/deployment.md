@@ -21,7 +21,7 @@ The deployment creates all resources in a single resource group (`rg-<env-name>`
 | Hosted agent | Foundry hosted agent | `src/fibey/agent/hosted.py` | Field operations agent + Toolbox MCP |
 | Work Orders API | Container App | `services/work-orders-api/` | Work order CRUD backend |
 | Inventory MCP | Container App | `services/inventory-mcp/` | Inventory MCP server |
-| Status Dashboard | Container App | `services/status-dashboard/` | Network/service status page |
+| Status Dashboard | Container App | `services/status-dashboard/` | Public, read-only demo network-health page; no API |
 | Playwright workspace + connection | Azure App Testing / Foundry | `infra/modules/playwright-workspace.bicep` | Managed browser infrastructure for Browser Automation |
 | AI Foundry account + project | Microsoft Foundry | `infra/core/ai/` | Hosts the model deployment, hosted agent, and toolbox |
 | Model deployment | Foundry | `azure.yaml` | `gpt-4.1-mini` (configurable) |
@@ -166,7 +166,16 @@ and uninterrupted first-run deployment remain unverified.
 The postdeploy Toolbox publisher attaches Browser Automation using this
 connection. The Status Dashboard has external ingress so the managed browsers
 can reach it; provisioning exports its HTTPS address as `STATUS_DASHBOARD_URL`.
-Private browsing requires separate networking configuration and is out of scope.
+This intentionally corrects the former internal-only ingress guidance: managed
+browsers do not share the Container Apps environment's private network. Private
+browsing requires separate networking configuration and is out of scope.
+The dashboard contains fake data and represents a page owned by another team
+or party with no API; no status MCP or OpenAPI backend is deployed.
+
+The runtime path is agent -> Toolbox native `browser_automation` tool ->
+Playwright project connection/workspace -> public Status Dashboard.
+See the [system architecture](architecture.md#system-diagram) and
+[Toolbox diagram](toolbox-integration.md) for editable diagrams.
 
 ### Hosted network-status smoke gate
 
@@ -188,6 +197,13 @@ content, and verifies NE-3/OLT-NE-201 fixture facts and source-only attribution
 and latency, never raw browser session URLs. Exit code 1 means the gate failed:
 stop and re-plan before dependent work.
 This tests neither gateway/UI activity rendering nor fresh provisioning.
+
+In the UI, the network-status starter prompt should produce one **Browse
+Status Dashboard** activity covering session creation, navigation/snapshot,
+and closure. Activity details contain only the site label and safe status,
+never session IDs, browser URLs, or page dumps. A successful answer shows a
+source-only **Status Dashboard** citation; a failed read reports that the page
+could not be read and must not cite it.
 
 Browser tool discovery must include session creation and closure, not just
 navigation/snapshots: navigation requires the ID returned by session creation.
@@ -390,6 +406,7 @@ azd deploy fibey-agent
 | `FOUNDRY_PROJECT_ENDPOINT` | Auto-injected | Foundry project endpoint URL |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `agent.yaml` | Model deployment name; takes precedence over `FOUNDRY_MODEL` |
 | `TOOLBOX_MCP_URL` | `agent.yaml` (`${TOOLBOX_MCP_URL}` from the azd env, set by `azd provision`) | Toolbox MCP endpoint URL |
+| `STATUS_DASHBOARD_URL` | `agent.yaml` (`${STATUS_DASHBOARD_URL}` from the azd env, set by `azd provision`) | Public dashboard HTTPS address used by the shared network-status prompt |
 
 > **Note:** All `FOUNDRY_*` and `AGENT_*` env vars are reserved by the platform.
 > Do not set reserved names in `agent.yaml`; use the supported model variable

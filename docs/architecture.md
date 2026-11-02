@@ -2,11 +2,11 @@
 
 ## Overview
 
-Fibey Field Ops is a fiber optics field operations demo built on **Azure AI Foundry Hosted Agents** and the **Foundry Toolbox**. The published Toolbox provides inventory lookup, work order management, knowledge retrieval, and five workflow skills. A separate status dashboard is deployed for service-status verification; browser automation is not registered by the current publisher.
+Fibey Field Ops is a fiber optics field operations demo built on **Azure AI Foundry Hosted Agents** and the **Foundry Toolbox**. The published Toolbox provides inventory lookup, work order management, knowledge retrieval, Browser Automation, and five workflow skills. Browser Automation reads the separate **Status Dashboard**, which represents a page owned by another team or party with no API.
 
 ## System Diagram
 
-![Fibey hosted system architecture: React UI exchanges streaming chat with the gateway, which calls the Foundry-hosted agent. The agent connects to the Toolbox for inventory, work orders, knowledge retrieval, and workflow skills. The status dashboard is separate.](images/system-architecture.svg)
+![Fibey hosted system architecture: React UI exchanges streaming chat with the gateway, which calls the Foundry-hosted agent. The Toolbox provides inventory, work orders, knowledge retrieval, workflow skills, and Browser Automation through a Playwright connection to read the public Status Dashboard.](images/system-architecture.svg)
 
 [Editable Draw.io source](images/system-architecture.drawio)
 (open in [draw.io](https://app.diagrams.net/)).
@@ -14,13 +14,17 @@ Fibey Field Ops is a fiber optics field operations demo built on **Azure AI Foun
 The bidirectional arrows represent requests and their responses: UI chat and
 SSE updates pass through the gateway, the gateway calls the hosted Responses
 API, and the agent uses one authenticated Toolbox MCP connection. The Toolbox
-routes tool calls to inventory, work orders, and FoundryIQ, while MCP Resources
-provide the five workflow skills used by `McpSkillsSource` and `SkillsProvider`.
+routes tool calls to inventory, work orders, FoundryIQ, and native Browser
+Automation, while MCP Resources provide the five workflow skills used by
+`McpSkillsSource` and `SkillsProvider`.
 
-The status dashboard has no Toolbox arrow because browser automation is not
-registered by the publisher. In local development, the gateway runs the agent
-in-process; the Toolbox connections stay the same. The component descriptions
-below explain each box's runtime, responsibilities, and source files.
+The browser path is Toolbox -> Browser Automation -> Playwright workspace and
+project connection -> Status Dashboard over public HTTPS, not a status API or
+MCP backend. `STATUS_DASHBOARD_URL` configures the only page the agent is
+instructed to read. In local development, the gateway runs the agent in-process;
+the Toolbox connections stay the same, including the remote managed browser.
+The component descriptions below explain each box's runtime, responsibilities,
+and source files.
 
 ## Components
 
@@ -38,6 +42,8 @@ FastAPI API layer between the React UI and the field operations agent.
   `<project-endpoint>/agents/fibey-agent/endpoint/protocols/openai/responses?api-version=2025-11-15-preview`.
   The gateway translates Responses events into the same UI SSE contract and
   preserves skill names, discovered operations, arguments, and tool errors.
+  Browser activity is sanitized before streaming: only the site label and
+  completion/error status reach the UI, not session IDs, URLs, or page dumps.
 - **History**: local `AgentSession`, or an in-memory per-session hosted
   response-ID mapping sent as `previous_response_id`. Gateway restarts lose
   the mapping. Session reset currently clears only local state; reusing a
@@ -53,6 +59,7 @@ The field operations agent that selects the right toolbox service for the techni
   - `agent.py` — agent definition + Toolbox MCP connection
   - `hosted.py` — hosted-mode entrypoint
   - `mcp_skills.py` — MCP Resources adapter for `SkillsProvider`
+  - `browser_sessions.py` — session-scoped cleanup after failed dashboard reads
   - `main.py` — local CLI entrypoint
   - `prompts/system_prompt.md` — field operations system prompt
 
@@ -90,6 +97,12 @@ React + TypeScript + Tailwind chat experience for field technicians.
   - `PromptSuggestions` — clickable starter prompts shown in empty state
   - `ActivitySidebar` — live tool activity feed
 
+The network-status starter prompt uses Browser Automation without loading a
+workflow skill. The sidebar groups browser session creation, navigation,
+snapshot, and closure into one **Browse Status Dashboard** activity. It shows
+the site label, not raw browser details; successful answers render a
+source-only **Status Dashboard** citation.
+
 ### Toolbox services (`services/`)
 
 The `services/` folder contains the operational systems the agent uses:
@@ -119,10 +132,14 @@ services/
 - Provides work order list, detail, create, and patch endpoints
 
 #### `services/status-dashboard/`
-- Static dashboard intended for browser automation for network/service checks;
-  that tool requires additional Toolbox configuration
+- Static, read-only Status Dashboard with fake network-health data and no API
+- Read through native Browser Automation registered by the Toolbox publisher,
+  using the provisioned Playwright workspace and project connection
 - Default local port: `8003`
-- Packaged as a lightweight web container
+- Packaged as a lightweight web container with external ingress for managed
+  browsers; `STATUS_DASHBOARD_URL` exports its public HTTPS address
+- Reads are restricted by shared instructions to the configured page, with no
+  fallback on failure; see [dashboard safety checks](deployment.md#dashboard-safety-checks)
 
 #### `services/foundry-iq-docs/`
 - Source markdown files for FoundryIQ knowledge retrieval
@@ -141,7 +158,8 @@ The deployment is organized around small, separable services:
 | Gateway | FastAPI | `8000` deployed / `8080` local | Azure Container App handling chat API |
 | Inventory MCP | Python MCP server | `8001` | Azure Container App exposed to the Toolbox |
 | Work Orders API | FastAPI | `8002` | Azure Container App exposed to the Toolbox |
-| Status Dashboard | Static web app | `8003` | Separate Azure Container App; browser tool not published automatically |
+| Status Dashboard | Static web app | `8003` | Public Azure Container App read through Browser Automation; no status API |
+| Browser Automation | Managed Playwright browser | n/a | Native Toolbox tool using the provisioned workspace and project connection |
 | Agent | Foundry hosted agent | `8088` in image | Foundry-managed Responses server; connects to Toolbox for tools and skills |
 | FoundryIQ docs | Blob storage + Azure AI Search | n/a | Blob-backed content ingested by AI Search, then exposed through a knowledge base MCP endpoint |
 

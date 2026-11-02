@@ -4,19 +4,23 @@ Fibey connects to the **Foundry Toolbox** through one **MCP (Model Context
 Protocol) Streamable HTTP** endpoint. The Toolbox dispatches tool calls to
 operational backends and serves versioned skills as MCP Resources.
 
-![Foundry Toolbox integration: one authenticated agent connection branches into operational tool calls for inventory, work orders, and FoundryIQ, and MCP Resources for skill discovery and loading.](images/toolbox-integration.svg)
+![Foundry Toolbox integration: one authenticated agent connection branches into tool calls for inventory, work orders, FoundryIQ, and Browser Automation reading the public Status Dashboard, and MCP Resources for skill discovery and loading.](images/toolbox-integration.svg)
 
 [Editable Draw.io source](images/toolbox-integration.drawio)
 (open in [draw.io](https://app.diagrams.net/)).
 
 The arrows show requests and responses on the same MCP session. The tools
 surface provides `tool_search` and `call_tool` for inventory, Work Orders
-OpenAPI, and FoundryIQ KB MCP. The resources surface provides the skill index
-and `SKILL.md` content consumed by `McpSkillsSource` and `SkillsProvider`.
+OpenAPI, FoundryIQ KB MCP, and Browser Automation. The resources surface provides
+the skill index and `SKILL.md` content consumed by `McpSkillsSource` and
+`SkillsProvider`.
 
 The Status Dashboard is a public, read-only Container App. The publisher
 registers Browser Automation through the provisioned Playwright workspace
 connection; `STATUS_DASHBOARD_URL` exports the dashboard's HTTPS address.
+The dashboard represents a third-party page with no API: it is not registered
+as an MCP or OpenAPI backend. Managed browsers need external ingress;
+internal-only ingress requires separate private browsing networking.
 
 ## MCP connection and authentication
 
@@ -72,6 +76,29 @@ the KB MCP endpoint as its target, and `https://search.azure.com/` as its
 audience. The Foundry project and account identities receive Search Index Data
 Reader. This is a KB MCP connection, not a `CognitiveSearch`/API-key
 `azure_ai_search` tool.
+
+### Dashboard browsing flow
+
+Standalone network-status requests use the shared system prompt, not
+`load_skill`. The agent discovers session creation, navigation, snapshot, and
+closure through `tool_search`, then invokes the returned
+`browser_automation___*` names through `call_tool`. It creates one session,
+reads only `STATUS_DASHBOARD_URL`, and closes the session before answering.
+Successful reads end with `Source: Status Dashboard`, without a URL.
+
+Both gateway modes sanitize browser arguments/results before emitting SSE:
+only `site: Status Dashboard` and safe completion/error details are exposed.
+The UI groups lifecycle calls into one **Browse Status Dashboard** step and
+renders a source-only citation. Session IDs, Live View/recording/debugging URLs,
+and raw page content are not shown in the activity details.
+
+The shared prompt treats page text as untrusted data and prohibits following
+links, running scripts, submitting forms, or changing state. Failed reads use
+session-scoped runtime cleanup, do not retry navigation/snapshots, and report
+that the dashboard could not be read, without guessing, fallback sources, or a
+dashboard citation. These instructions are not a browser-level security sandbox.
+See [deployment.md](deployment.md#dashboard-safety-checks) for the real-model
+safety checks and the separate hosted Browser Automation smoke gate.
 
 ### KB resource URI compatibility
 
@@ -192,6 +219,8 @@ hosted flow, RBAC, and deployment verification limits.
 | `src/fibey/agent/agent.py` | Local agent, Toolbox authentication, skills provider |
 | `src/fibey/agent/hosted.py` | Hosted Responses server, authentication, KB URI workaround |
 | `src/fibey/agent/mcp_skills.py` | MCP Resources-to-SkillsSource adapter |
+| `src/fibey/agent/browser_sessions.py` | Failed-read session cleanup in both agent modes |
+| `src/fibey/gateway/api_server.py` | Browser activity redaction at the shared SSE boundary |
 | `skills/` | Version-controlled publishing source |
 | `scripts/setup-toolbox.sh` | Skill and Toolbox version publication |
 | `agent.yaml` / `azure.yaml` | Hosted definition and azd deployment/hooks |

@@ -87,7 +87,12 @@ python -m http.server 8003
 ```
 
 - URL: `http://localhost:8003`
-- Used by browser automation to verify network/service status.
+- This local URL is for viewing the fixture yourself. Even in local agent mode,
+  Browser Automation runs in the managed Playwright workspace, not on your
+  workstation, so it cannot reach workstation `localhost`.
+- For agent browsing, set `STATUS_DASHBOARD_URL` in `.env` to the provisioned
+  public dashboard HTTPS address and configure `TOOLBOX_MCP_URL`. See
+  [Browser Automation infrastructure](deployment.md#browser-automation-infrastructure).
 
 ### FoundryIQ knowledge base content
 
@@ -105,6 +110,7 @@ Copy `.env.example` to `.env` and configure:
 | `HOSTED_AGENT_NAME` | Hosted mode | `fibey-agent` | Hosted agent name |
 | `HOSTED_AGENT_ENDPOINT` | Hosted mode | — | Foundry project endpoint for the gateway proxy |
 | `TOOLBOX_MCP_URL` | For real toolbox access | — | Foundry Toolbox MCP endpoint (without `api-version` — code appends `?api-version=v1`) |
+| `STATUS_DASHBOARD_URL` | For network-status browsing | — | Dashboard HTTPS address reachable by the managed browser; unset disables status browsing |
 | `AZURE_SEARCH_ENDPOINT` | For direct KB fallback | — | Azure AI Search endpoint |
 | `AZURE_SEARCH_INDEX` | For direct KB fallback | `foundry-iq-docs-index` | Search index name |
 | `AZURE_SEARCH_API_KEY` | For direct KB fallback | — | Search admin/query key |
