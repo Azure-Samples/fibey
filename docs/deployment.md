@@ -204,6 +204,32 @@ latency. Preview runs also exposed generic function/argument-parsing errors,
 so a successful spike is not a reliability guarantee. Findings are recorded on
 parent [#46](https://github.com/Azure-Samples/fibey/issues/46).
 
+### Dashboard safety checks
+
+The shared prompt limits browsing to the configured URL and read-only session
+operations, and treats page text as untrusted data. Failed reads must close the
+session before reporting that the dashboard could not be read, with no guessed
+status, fallback source, or dashboard source citation. An expired session may
+also fail to close; neither the read nor cleanup is retried.
+
+Run the opt-in real-model checks with controlled Browser Automation responses:
+
+```bash
+FIBEY_MODEL_SAFETY_TEST_ENVIRONMENT=fibey-dev \
+  uv run --no-sync python -m unittest discover -s tests -p test_dashboard_safety.py
+```
+
+These checks use the shared prompt and the environment's Foundry model (incurs
+model usage), replacing only the Toolbox boundary with controlled responses.
+They cover an unreachable URL, an unreadable layout, session expiry including
+failed cleanup, and page instructions attempting to override facts, navigate
+elsewhere, run scripts, and modify a work order. They check the answer and
+attempted tool operations, including session cleanup and URL restrictions.
+They do not use a real browser or change the deployed dashboard. Run the hosted
+smoke gate above separately to check real Browser Automation integration.
+Prompt-based restrictions and passing model checks are not a browser-level
+security sandbox or a guarantee against every prompt injection.
+
 ## Environment variables
 
 Provisioned endpoints are produced as Bicep outputs and stored in the azd

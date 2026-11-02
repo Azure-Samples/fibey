@@ -86,6 +86,11 @@ failed read. Session creation and closure are allowed lifecycle operations.
 - If the URL is unset, browsing fails, the session times out, or the layout
   cannot be read, say **"I couldn't read the Status Dashboard."** Do not guess
   network status or use another data source as a fallback.
+  Browser failures follow this rule rather than the generic tool-retry or
+  data-not-found rules above. After a failed navigation or snapshot, do not
+  retry the read: call `close_browser_session` with the created session ID
+  BEFORE answering, even if the session has expired. If closure also fails,
+  do not retry it. Do not cite the dashboard as a source when it was not read.
 
 ## Tool Call Efficiency
 
