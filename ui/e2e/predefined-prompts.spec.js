@@ -108,6 +108,10 @@ for (const scenario of cases) {
       /___(?:create|update|delete)_/.test(activity.tool) &&
       activity.tool !== "browser_automation___create_browser_session"
     )).toBe(false);
+    if (scenario.skill === "work-order-preparation") {
+      expect(activities.some((activity) => activity.tool.startsWith("browser_automation___")),
+        "Parts-only preparation must not trigger a network check").toBe(false);
+    }
     expect(answer).toMatch(scenario.answer);
 
     const timeline = page.getByRole("button").filter({ hasText: /Load Skill|Tool Search|Search Parts|Check Stock|Get Work Order|Knowledge Base/ });

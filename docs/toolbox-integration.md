@@ -110,6 +110,23 @@ Local mode loads them through the provider when the agent runs. The source
 caches skills for its lifetime: hosted content stays cached until restart;
 local runs create a new source.
 
+### Workflow skill review for network status
+
+Reviewed for [#53](https://github.com/Azure-Samples/fibey/issues/53):
+
+| Skill | Outcome |
+|-------|---------|
+| `field-briefing` | Include a Status Dashboard check when the work order or technician explicitly identifies a segment or OLT. Without an identifier, state that network status was not checked; do not infer a mapping from an address. Preserve procedures, safety, and KB sources. |
+| `work-order-preparation` | Keep parts-only preparation unchanged. Add network context only when requested, using an explicit segment or OLT; keep parts readiness separate from network health. |
+| `work-order-management` | Clarify that work order status is a job lifecycle state, not network health; combined requests use the system prompt's dashboard flow without automatic job updates. |
+| `knowledge-retrieval` | Clarify that the KB provides reference guidance, not live status; combined requests retain both KB and Status Dashboard sources. |
+| `inventory-lookup` | No change: stock, parts, and equipment availability remain inventory concerns, not network-health signals. |
+
+No new workflow skill is needed. The shared system prompt already owns
+standalone Status Dashboard lookup and its Browser Automation safety,
+cleanup, failure, and citation rules. Workflow skills add context and decide
+when to use that lookup rather than duplicating its implementation.
+
 ### Failure behavior
 
 With `TOOLBOX_MCP_URL` configured, MCP list/read failures, invalid index JSON,

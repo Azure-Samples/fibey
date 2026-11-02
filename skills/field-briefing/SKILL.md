@@ -1,12 +1,13 @@
 ---
 name: field-briefing
-description: Provide a comprehensive field briefing for a work order — combining work order details, parts availability, and relevant technical procedures or safety protocols from the knowledge base. Use when the technician wants a full briefing, walkthrough, or complete preparation guide for a job.
+description: Provide a comprehensive field briefing for a work order — combining work order details, parts availability, technical procedures, safety protocols, and network status when a segment or OLT is identified. Use when the technician wants a full briefing, walkthrough, or complete preparation guide for a job.
 ---
 
 # Field Briefing
 
 Use this skill to give the technician a complete briefing before heading to a job site.
 This combines work order details, parts availability, and relevant procedures/safety info.
+Include network context when the work order or technician explicitly identifies a segment or OLT.
 
 ## When to Use
 
@@ -26,6 +27,9 @@ This skill uses **three** capabilities from the Foundry Toolbox in sequence:
 | 2 | Check stock for the parts list | `inventory___check_stock_batch` |
 | 3 | Search procedures & safety | `knowledge_base___knowledge_base_retrieve` |
 
+For an identified segment or OLT, also use **Browser Automation** to read the
+**Status Dashboard**, following the system prompt's Network Status instructions.
+
 ### Step 0: Discover tools (REQUIRED before first call this turn)
 
 If any of these tools isn't already visible in your tool list, run **one** combined `tool_search` with **`limit: 10`**:
@@ -41,6 +45,10 @@ can fill all ten results with inventory and work-order tools before knowledge
 retrieval is included. If discovery lacks a required capability, report that it
 is unavailable; do not call an undiscovered name or retry with a reworded KB query.
 
+The combined query covers the three core capabilities only. When the conditional
+network check below applies, discover Browser Automation separately using the
+system prompt's session-lifecycle query; do not crowd it into the core query.
+
 ## Step-by-Step Instructions
 
 ### Step 1: Fetch the Work Order
@@ -48,6 +56,8 @@ is unavailable; do not call an undiscovered name or retry with a reworded KB que
 Call `work_orders___get_work_order_work_orders__work_order_id__get` via `call_tool` with `{"work_order_id": "WO-XXX"}`.
 Note the job type from the title and description — you'll need this to search
 the knowledge base for relevant procedures.
+Keep any segment or OLT identifiers explicitly supplied by the work order or
+technician. Do not infer a network element from a street address or job type.
 
 ### Step 2: Check Parts Availability
 
@@ -69,11 +79,31 @@ _"Give me the fusion splice procedure and safety protocols for aerial fiber work
 
 Do NOT make separate calls for procedures and safety — combine them into a single query. This is more efficient and avoids redundant lookups.
 
-### Step 4: Present the Complete Briefing
+### Step 4: Include Relevant Network Status
+
+If the work order or technician explicitly identifies a segment or OLT, read its
+status even if the technician did not separately ask for a network-status check.
+Follow the system prompt's Network Status instructions for discovery, read-only
+browsing of the configured URL, session cleanup, failure handling, and citation.
+Do not load another skill for the lookup.
+
+Summarize only the identified elements, their alerts and recent incidents, with
+the dashboard's displayed timestamps. Keep this separate from the work order's
+job status. Do not infer that a dashboard incident caused the work order.
+
+If no segment or OLT is identified, do not browse or guess a mapping. State that
+network status was not checked because no network element was identified. If a
+named element is absent from the page, say it was not found rather than healthy.
+If the dashboard cannot be read, use the system prompt's failure message and
+continue with the available work order, parts, procedure, and safety information.
+
+### Step 5: Present the Complete Briefing
 
 Structure the response in this order. Use collapsible `<details>` sections
 for safety notes and full procedures to keep the briefing scannable.
 The job details table and parts checklist should always be visible.
+Place a visible **Network Status** section after the parts checklist when a
+network check applies; otherwise include the short "not checked" note.
 
 ```
 ## Field Briefing — WO-007: Fiber Splice Repair
@@ -126,12 +156,16 @@ The job details table and parts checklist should always be visible.
 </details>
 ```
 
-### Step 5: Closing Summary
+### Step 6: Closing Summary
 
-End with a quick go/no-go assessment:
-- ✅ All clear: _"You're all set — parts are available and you have the procedure. Good luck out there!"_
+Give a quick parts-readiness assessment:
+- ✅ Parts ready: _"Parts are available and the procedure is included."_
 - ⚠️ Partial: _"Heads up: some parts are unavailable. You may want to resolve that before heading out."_
 - ❌ Blocked: _"Hold off — critical parts are missing. Want me to help find alternatives?"_
+
+Report any network outage, degraded element, or unavailable network check
+separately. Parts availability alone is not an all-clear for network health or
+authorization to proceed; do not change the work order based on the dashboard.
 
 ## Delegation Rules
 
@@ -140,9 +174,12 @@ This skill uses **all three tool types** in sequence:
 2. **Inventory tools** → check stock for parts_needed
 3. **Knowledge base** → pull procedure and safety info based on job type
 
+When a segment or OLT is identified, add **Browser Automation** for its network
+context; the system prompt owns that lookup, not a separate workflow skill.
+
 ## Citation Rules
 
-- ALWAYS end with the sources block listing all KB documents referenced, using this format:
+- ALWAYS include the sources block listing all KB documents referenced, using this format:
 ```
 ---
 **Sources**
@@ -160,6 +197,9 @@ This skill uses **all three tool types** in sequence:
   - `network-architecture` → **Network Architecture**
   - `troubleshooting-guide` → **Troubleshooting Guide**
 - Never cite a `.md` filename directly (e.g., write "Safety Protocols", not "safety-protocols.md")
+- If the dashboard was read successfully, retain the KB sources block and end
+  the response with the exact Status Dashboard source line from the system
+  prompt. Do not cite the dashboard if it could not be read.
 
 ## What NOT to Do
 

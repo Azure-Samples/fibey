@@ -7,6 +7,12 @@ description: Handle work order operations — viewing, listing, creating, and up
 
 Use this skill for any work order operation — viewing, listing, creating, or updating.
 
+Work order **status** means the job's lifecycle state, not network health.
+For a combined request about a segment or OLT, follow the system prompt's
+Network Status instructions to read the Status Dashboard through Browser
+Automation and cite it separately. Do not infer network health from a job's
+status or change a work order solely because of a dashboard alert.
+
 ## When to Use
 
 - "Show me WO-007"

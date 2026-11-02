@@ -8,6 +8,13 @@ description: Handle technical knowledge questions — procedures, safety protoco
 Use this skill when the technician asks about procedures, safety, specifications,
 troubleshooting, or any technical guidance from the field operations knowledge base.
 
+The knowledge base is reference guidance, not a source of live network health.
+A status-only question about a segment, OLT, alert, or incident follows the
+system prompt's Network Status instructions instead; do not load this skill
+or query the knowledge base just to read the Status Dashboard. For a request
+combining guidance and network status, retrieve the guidance once as below and
+use Browser Automation for the status, preserving both sources.
+
 ## When to Use
 
 - "How do I perform a fusion splice?"
@@ -141,7 +148,7 @@ Topics that require safety lead-in:
 
 ### Step 4: Citations
 
-**MANDATORY:** Every response MUST end with a source citation line.
+**MANDATORY:** Every response MUST include the KB sources block.
 
 Format (always use this exact structure):
 ```
@@ -152,6 +159,11 @@ Format (always use this exact structure):
 ```
 
 Use a horizontal rule (`---`) before the sources block to visually separate it.
+
+For guidance-only responses, end with this sources block. If the dashboard was
+also read successfully, retain the KB sources block and end with the exact
+Status Dashboard source line from the system prompt, after any follow-up offer.
+Do not cite an unread dashboard.
 
 Derive the document name from the knowledge base results. If uncertain, use the
 closest matching document from the list in "Knowledge Base Contents" above.
