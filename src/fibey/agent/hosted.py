@@ -16,13 +16,13 @@ Environment variables (auto-injected by Foundry hosting):
 Environment variables (set in agent.yaml):
     AZURE_AI_MODEL_DEPLOYMENT_NAME — model deployment name (e.g. gpt-4.1-mini)
     TOOLBOX_MCP_URL — Foundry Toolbox MCP endpoint URL
+    STATUS_DASHBOARD_URL — public, read-only Status Dashboard URL
 """
 
 import asyncio
 import logging
 import os
 from contextlib import AsyncExitStack
-from pathlib import Path
 
 import httpx
 import mcp.types
@@ -38,14 +38,12 @@ from azure.identity import (
 from dotenv import load_dotenv
 
 from fibey.agent.mcp_skills import McpSkillsSource
+from fibey.agent.prompts import load_system_prompt
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
-
 
 # ---------------------------------------------------------------------------
 # Workaround: Azure AI Search KB MCP returns resource content with uri: null
@@ -72,12 +70,6 @@ class ToolboxAuth(httpx.Auth):
         """Add Authorization header with a fresh token on every request."""
         request.headers["Authorization"] = f"Bearer {self._token_provider()}"
         yield request
-
-
-def _load_system_prompt() -> str:
-    if SYSTEM_PROMPT_PATH.exists():
-        return SYSTEM_PROMPT_PATH.read_text()
-    return "You are Fibey, a helpful AI assistant for fiber optics field operations."
 
 
 async def main() -> None:
@@ -134,7 +126,7 @@ async def main() -> None:
         agent = Agent(
             client=client,
             name="fibey",
-            instructions=_load_system_prompt(),
+            instructions=load_system_prompt(),
             tools=tools,
             context_providers=[skills_provider] if skills_provider else None,
             default_options={"store": False},

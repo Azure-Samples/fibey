@@ -168,6 +168,42 @@ connection. The Status Dashboard has external ingress so the managed browsers
 can reach it; provisioning exports its HTTPS address as `STATUS_DASHBOARD_URL`.
 Private browsing requires separate networking configuration and is out of scope.
 
+### Hosted network-status smoke gate
+
+The agent receives `STATUS_DASHBOARD_URL` through `agent.yaml`; local mode reads
+the same setting from `.env`. Both modes use shared network-status instructions
+without loading a workflow skill. An unset URL disables browsing for status
+requests; an invalid URL fails explicitly.
+
+After deploying the agent, run the opt-in gate (incurs model and browser usage):
+
+```bash
+uv run --no-sync python scripts/smoke-network-status.py -e fibey-dev
+```
+
+The script sends a network-status question directly to the hosted Responses API,
+checks Browser Automation visited the configured page and returned dashboard
+content, and verifies NE-3/OLT-NE-201 fixture facts and a Status Dashboard source
+link. It prints safe evidence summaries and latency, never raw browser session
+URLs. Exit code 1 means the gate failed: stop and re-plan before dependent work.
+This tests neither gateway/UI activity rendering nor fresh provisioning.
+
+Browser tool discovery must include session creation and closure, not just
+navigation/snapshots: navigation requires the ID returned by session creation.
+Close the browser session after reading. Tool descriptions request sharing Live
+View/recording links; the system instructions explicitly prohibit doing so.
+The model also needs the concrete dashboard citation line in its instructions;
+earlier spike runs read the page correctly but omitted attribution.
+
+The #49 gate passed against hosted version 8 in the existing `fibey-dev`
+environment on 2026-11-01: two passing runs at 48.9 seconds total, 45.7–46.8 seconds
+to first answer text, four to five browser calls, and dashboard facts plus the
+source citation. The dashboard
+already had one minimum replica; browser/model orchestration still incurs
+latency. Preview runs also exposed generic function/argument-parsing errors,
+so a successful spike is not a reliability guarantee. Findings are recorded on
+parent [#46](https://github.com/Azure-Samples/fibey/issues/46).
+
 ## Environment variables
 
 Provisioned endpoints are produced as Bicep outputs and stored in the azd

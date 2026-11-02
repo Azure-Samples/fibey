@@ -13,7 +13,6 @@ import os
 import json
 import logging
 from contextlib import AsyncExitStack
-from pathlib import Path
 from typing import Any, AsyncGenerator
 
 import httpx
@@ -30,24 +29,17 @@ from agent_framework import (
 from agent_framework.foundry import FoundryChatClient
 
 from fibey.agent.mcp_skills import McpSkillsSource
+from fibey.agent.prompts import load_system_prompt
 from fibey.tool_results import tool_result_is_error, tool_search_results
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
 _TOKEN_SCOPE = "https://ai.azure.com/.default"
 
 # Azure AI Search configuration for direct KB queries
 _SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
 _SEARCH_INDEX = os.getenv("AZURE_SEARCH_INDEX", "foundry-iq-docs-index")
 _SEARCH_API_KEY = os.getenv("AZURE_SEARCH_API_KEY", "")
-
-
-def _load_system_prompt() -> str:
-    """Load the system prompt from markdown file."""
-    if SYSTEM_PROMPT_PATH.exists():
-        return SYSTEM_PROMPT_PATH.read_text()
-    return "You are Fibey, a helpful AI assistant."
 
 
 def _get_credential():
@@ -208,7 +200,7 @@ def create_agent() -> tuple[Agent, list]:
     agent = Agent(
         client=client,
         name="fibey",
-        instructions=_load_system_prompt(),
+        instructions=load_system_prompt(),
         tools=tools,
     )
 
