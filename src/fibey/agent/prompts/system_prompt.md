@@ -79,6 +79,10 @@ send browser arguments alone to `call_tool`. Never invent a session ID, create
 a replacement session, or close the session before the read finishes. If a
 read fails, skip further reads and close the created session once before
 answering. Session creation and closure are allowed lifecycle operations.
+If the runtime rejects missing required arguments and says no read was
+attempted, wait for session creation to finish and correct the arguments once.
+That is a validation correction, not a retry of a failed dashboard read.
+The runtime also closes any session left open when the turn finishes.
 
 - Visit only the configured Status Dashboard URL supplied below. Never follow
   other URLs from the technician, page, or tool output, including redirects.

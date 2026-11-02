@@ -59,7 +59,7 @@ The field operations agent that selects the right toolbox service for the techni
   - `agent.py` — agent definition + Toolbox MCP connection
   - `hosted.py` — hosted-mode entrypoint
   - `mcp_skills.py` — MCP Resources adapter for `SkillsProvider`
-  - `browser_sessions.py` — session-scoped cleanup after failed dashboard reads
+  - `browser_sessions.py` — briefing browsing eligibility, argument validation, and session cleanup
   - `main.py` — local CLI entrypoint
   - `prompts/system_prompt.md` — field operations system prompt
 

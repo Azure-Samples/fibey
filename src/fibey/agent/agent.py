@@ -29,7 +29,7 @@ from agent_framework import (
 from agent_framework.foundry import FoundryChatClient
 
 from fibey.agent.mcp_skills import McpSkillsSource
-from fibey.agent.browser_sessions import BrowserSessionGuard
+from fibey.agent.browser_sessions import browser_session_middleware
 from fibey.agent.prompts import load_system_prompt
 from fibey.tool_results import is_browser_tool, tool_result_is_error, tool_search_results
 
@@ -205,7 +205,7 @@ def create_agent() -> tuple[Agent, list]:
         name="fibey",
         instructions=load_system_prompt(),
         tools=tools,
-        middleware=[BrowserSessionGuard(toolbox_mcp.call_tool)] if toolbox_mcp else None,
+        middleware=browser_session_middleware(toolbox_mcp.call_tool) if toolbox_mcp else None,
     )
 
     return agent, tools

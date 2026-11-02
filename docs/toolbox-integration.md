@@ -100,6 +100,12 @@ dashboard citation. These instructions are not a browser-level security sandbox.
 See [deployment.md](deployment.md#dashboard-safety-checks) for the real-model
 safety checks and the separate hosted Browser Automation smoke gate.
 
+Shared runtime middleware validates required browser arguments before dispatch
+and closes sessions left open at turn completion, including after malformed
+parallel creation/navigation calls. Argument-validation rejection means no read
+was attempted; the model may correct the arguments once. Actual failed reads
+still receive one cleanup attempt and must not be retried.
+
 ### KB resource URI compatibility
 
 The hosted entrypoint relaxes MCP SDK resource-content URI fields to
@@ -153,6 +159,15 @@ No new workflow skill is needed. The shared system prompt already owns
 standalone Status Dashboard lookup and its Browser Automation safety,
 cleanup, failure, and citation rules. Workflow skills add context and decide
 when to use that lookup rather than duplicating its implementation.
+
+After `field-briefing` is loaded, the runtime also blocks browser creation and
+reads unless the current user request or a successful work-order lookup contains
+an explicit network identifier. Recognition covers `OLT-*` identifiers, the
+dashboard's regional segment ID forms (for example `NE-3` and `Harbor-1`), and
+explicitly labeled numeric segment IDs (for example `segment Rural-9`).
+Prior-turn identifiers, inventory, and knowledge-base results do not authorize
+briefing browsing. Standalone network-status lookups retain their existing flow;
+this is not a general natural-language request classifier.
 
 ### Failure behavior
 
@@ -219,7 +234,7 @@ hosted flow, RBAC, and deployment verification limits.
 | `src/fibey/agent/agent.py` | Local agent, Toolbox authentication, skills provider |
 | `src/fibey/agent/hosted.py` | Hosted Responses server, authentication, KB URI workaround |
 | `src/fibey/agent/mcp_skills.py` | MCP Resources-to-SkillsSource adapter |
-| `src/fibey/agent/browser_sessions.py` | Failed-read session cleanup in both agent modes |
+| `src/fibey/agent/browser_sessions.py` | Briefing browsing eligibility, browser argument validation, and session cleanup in both modes |
 | `src/fibey/gateway/api_server.py` | Browser activity redaction at the shared SSE boundary |
 | `skills/` | Version-controlled publishing source |
 | `scripts/setup-toolbox.sh` | Skill and Toolbox version publication |

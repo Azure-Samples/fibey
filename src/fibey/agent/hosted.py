@@ -38,7 +38,7 @@ from azure.identity import (
 from dotenv import load_dotenv
 
 from fibey.agent.mcp_skills import McpSkillsSource
-from fibey.agent.browser_sessions import BrowserSessionGuard
+from fibey.agent.browser_sessions import browser_session_middleware
 from fibey.agent.prompts import load_system_prompt
 
 load_dotenv()
@@ -117,7 +117,7 @@ async def main() -> None:
                 allowed_tools=["tool_search", "call_tool"],
             ))
             tools.append(toolbox_mcp_tool)
-            middleware.append(BrowserSessionGuard(toolbox_mcp_tool.call_tool))
+            middleware.extend(browser_session_middleware(toolbox_mcp_tool.call_tool))
             if toolbox_mcp_tool.session is None:
                 raise RuntimeError("Toolbox MCP session was not initialized")
             skills_source = McpSkillsSource(toolbox_mcp_tool.session)

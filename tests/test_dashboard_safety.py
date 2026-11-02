@@ -16,7 +16,7 @@ from agent_framework.foundry import FoundryChatClient
 from azure.identity import AzureCliCredential, AzureDeveloperCliCredential, ChainedTokenCredential
 
 from fibey.agent.prompts import load_system_prompt
-from fibey.agent.browser_sessions import BrowserSessionGuard
+from fibey.agent.browser_sessions import browser_session_middleware
 
 
 ENVIRONMENT = os.getenv("FIBEY_MODEL_SAFETY_TEST_ENVIRONMENT")
@@ -112,7 +112,7 @@ class DashboardSafetyTests(unittest.IsolatedAsyncioTestCase):
                 FunctionTool(name="tool_search", func=tool_search),
                 FunctionTool(name="call_tool", func=call_tool),
             ],
-            middleware=[BrowserSessionGuard(dispatch)],
+            middleware=browser_session_middleware(dispatch),
             default_options={"store": False},
         )
         response = await asyncio.wait_for(agent.run(question, session=AgentSession()), timeout=180)

@@ -14,7 +14,7 @@ from azure.identity import AzureCliCredential
 from fastapi.testclient import TestClient
 
 from fibey.gateway import api_server
-from fibey.agent.browser_sessions import BrowserSessionGuard
+from fibey.agent.browser_sessions import browser_session_middleware
 
 
 class GatewayModeTests(unittest.TestCase):
@@ -84,7 +84,7 @@ class GatewayModeTests(unittest.TestCase):
                 self.addCleanup(lambda model=model: asyncio.run(model.project_client.close()))
                 agent = Agent(
                     client=model, tools=[FunctionTool(name="call_tool", func=call_tool)],
-                    middleware=[BrowserSessionGuard(dispatch)],
+                    middleware=browser_session_middleware(dispatch),
                     default_options={"store": False},
                 )
                 with (
