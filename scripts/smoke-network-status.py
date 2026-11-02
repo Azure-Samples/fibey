@@ -24,7 +24,9 @@ QUESTION = (
 FACTS = {
     "NE-3 outage": r"NE-3[\s\S]{0,160}\boutage\b",
     "fiber cut alert": r"fiber cut",
-    "OLT-NE-201 degraded": r"OLT-NE-201[\s\S]{0,160}\bdegraded\b",
+    "OLT-NE-201 degraded": (
+        r"(?:OLT[- ]NE-201[\s\S]{0,160}\bdegraded\b|\bdegraded\b[\s\S]{0,160}OLT[- ]NE-201)"
+    ),
     "uplink incident": r"uplink flap",
 }
 

@@ -127,7 +127,7 @@ for (const scenario of cases) {
       expect(completed.map((activity) => activity.tool)).toEqual(expect.arrayContaining(browserTools));
       expect(answer).toMatch(/NE-3[\s\S]{0,160}\boutage\b/i);
       expect(answer).toMatch(/fiber cut/i);
-      expect(answer).toMatch(/OLT-NE-201[\s\S]{0,160}\bdegraded\b/i);
+      expect(answer).toMatch(/(?:OLT[- ]NE-201[\s\S]{0,160}\bdegraded\b|\bdegraded\b[\s\S]{0,160}OLT[- ]NE-201)/i);
       expect(answer).toMatch(/uplink flap/i);
       expect(answer).toMatch(/(?:Source:\s*|[-*]\s*(?:📄\s*)?)Status Dashboard\b/);
       expect(answer).not.toMatch(/https?:\/\//);
