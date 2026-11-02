@@ -28,11 +28,10 @@ const suggestions: Suggestion[] = [
   },
   {
     prompt:
-      "Check the parts list for WO-005 and tell me if we have everything in stock.",
+      "What's the network status of NE-3 Access Ring and OLT-NE-201? Include any NE-3 alert and the OLT's recent incident.",
     tags: [
-      { label: "work-order-preparation", color: "red" },
-      { label: "Work Orders API", color: "green" },
-      { label: "Inventory MCP", color: "yellow" },
+      { label: "Status Dashboard", color: "green" },
+      { label: "Browser Automation", color: "yellow" },
     ],
   },
   {

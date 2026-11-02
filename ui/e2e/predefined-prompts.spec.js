@@ -26,11 +26,14 @@ const cases = [
     answer: /splic/i,
   },
   {
-    name: "WO-005 stock check",
-    prompt: "Check the parts list for WO-005 and tell me if we have everything in stock.",
-    skill: "work-order-preparation",
-    tools: [workOrderTool, stockTool],
-    answer: /WO-005/,
+    name: "network status",
+    prompt: "What's the network status of NE-3 Access Ring and OLT-NE-201? Include any NE-3 alert and the OLT's recent incident.",
+    tools: [
+      "browser_automation___create_browser_session",
+      "browser_automation___browser_navigate",
+      "browser_automation___close_browser_session",
+    ],
+    answer: /NE-3/,
   },
   {
     name: "aerial installation safety",
@@ -49,7 +52,7 @@ const cases = [
 ];
 
 for (const scenario of cases) {
-  test(`${scenario.name}: skill precedes discovery and a usable answer`, async ({ page }, testInfo) => {
+  test(`${scenario.name}: ${scenario.skill ? "skill precedes discovery" : "browser discovery"} and a usable answer`, async ({ page }, testInfo) => {
     const browserErrors = [];
     page.on("pageerror", (error) => browserErrors.push(error.message));
     await page.goto("/");
@@ -81,26 +84,47 @@ for (const scenario of cases) {
     expect(events.filter((event) => event.event === "error")).toEqual([]);
     expect(activities.filter((activity) => activity.status === "error")).toEqual([]);
     expect(events.filter((event) => event.event === "done")).toEqual([{ event: "done", data: "[DONE]" }]);
-    expect(started[0]?.tool, "The first visible activity must load the matching skill").toBe("load_skill");
-    const skillIndex = activities.findIndex((activity) => activity.tool === "load_skill" && activity.status === "complete");
-    expect(skillIndex).toBeGreaterThanOrEqual(0);
-    expect(JSON.parse(activities[skillIndex].args).skill_name).toBe(scenario.skill);
     const searchIndex = activities.findIndex((activity) => activity.tool === "tool_search");
-    expect(searchIndex, "Discovery must wait for the skill instructions").toBeGreaterThan(skillIndex);
+    if (scenario.skill) {
+      expect(started[0]?.tool, "The first visible activity must load the matching skill").toBe("load_skill");
+      const skillIndex = activities.findIndex((activity) => activity.tool === "load_skill" && activity.status === "complete");
+      expect(skillIndex).toBeGreaterThanOrEqual(0);
+      expect(JSON.parse(activities[skillIndex].args).skill_name).toBe(scenario.skill);
+      expect(searchIndex, "Discovery must wait for the skill instructions").toBeGreaterThan(skillIndex);
+    } else {
+      expect(started[0]?.tool, "Network status starts with browser discovery, not a skill").toBe("tool_search");
+      expect(activities.some((activity) => activity.tool === "load_skill")).toBe(false);
+      expect(searchIndex).toBeGreaterThanOrEqual(0);
+    }
     const searchCompleteIndex = activities.findIndex((activity) => activity.tool === "tool_search" && activity.status === "complete");
     expect(searchCompleteIndex).toBeGreaterThanOrEqual(searchIndex);
     expect(activities[searchCompleteIndex].results.map((tool) => tool.name),
-      "Discovery must return every operational capability required by the skill")
+      "Discovery must return every operational capability required by the prompt")
       .toEqual(expect.arrayContaining(scenario.tools));
     const operationalIndex = activities.findIndex((activity) => !["load_skill", "tool_search"].includes(activity.tool));
     expect(operationalIndex, "Operational calls must follow discovery").toBeGreaterThan(searchCompleteIndex);
     expect(completed.map((activity) => activity.tool)).toEqual(expect.arrayContaining(scenario.tools));
-    expect(activities.some((activity) => /___(?:create|update|delete)_/.test(activity.tool))).toBe(false);
+    expect(activities.some((activity) =>
+      /___(?:create|update|delete)_/.test(activity.tool) &&
+      activity.tool !== "browser_automation___create_browser_session"
+    )).toBe(false);
     expect(answer).toMatch(scenario.answer);
 
     const timeline = page.getByRole("button").filter({ hasText: /Load Skill|Tool Search|Search Parts|Check Stock|Get Work Order|Knowledge Base/ });
-    await expect(timeline.first()).toContainText("Load Skill");
+    await expect(timeline.first()).toContainText(scenario.skill ? "Load Skill" : "Tool Search");
     await expect(page.locator(".markdown-body").last()).toContainText(scenario.answer);
+    if (!scenario.skill) {
+      expect(answer).toMatch(/NE-3[\s\S]{0,160}\boutage\b/i);
+      expect(answer).toMatch(/fiber cut/i);
+      expect(answer).toMatch(/OLT-NE-201[\s\S]{0,160}\bdegraded\b/i);
+      expect(answer).toMatch(/uplink flap/i);
+      expect(answer).toMatch(/\[Status Dashboard\]\(https?:\/\/[^)]+\)/);
+      const browserActivity = page.getByRole("button", { name: "Browse Status Dashboard: Done", exact: true });
+      await expect(browserActivity).toHaveCount(1);
+      await browserActivity.click();
+      await expect(page.getByText("Browser Automation")).toBeVisible();
+      await expect(page.getByText("Status Dashboard", { exact: true }).last()).toBeVisible();
+    }
     if (scenario.tools.includes(knowledgeTool)) {
       const knowledgeCalls = activities.filter((activity) => activity.tool.includes("knowledge_base"));
       expect(new Set(knowledgeCalls.map((activity) => activity.call_id)).size,
