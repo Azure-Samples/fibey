@@ -30,7 +30,7 @@ from agent_framework.foundry import FoundryChatClient
 
 from fibey.agent.mcp_skills import McpSkillsSource
 from fibey.agent.prompts import load_system_prompt
-from fibey.tool_results import tool_result_is_error, tool_search_results
+from fibey.tool_results import is_browser_tool, tool_result_is_error, tool_search_results
 
 logger = logging.getLogger(__name__)
 
@@ -349,11 +349,6 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                             else str(result_obj) if result_obj is not None else ""
                         )
                         error_detail = str(exception) if exception else result_repr
-                        logger.info(
-                            "TOOL_RESULT call_id=%s tool=%s is_error=%s preview=%s",
-                            call_id, tool_name, is_error, error_detail.replace("\n", " ")[:400],
-                        )
-
                         # Safety net: if early-chunk unwrap of `call_tool` failed
                         # (args were chunked), retry now that pending_args is complete.
                         extra_meta: dict[str, Any] = {}
@@ -373,6 +368,13 @@ async def run_agent(message: str, session: dict) -> AsyncGenerator[dict, None]:
                                     else str(inner_args)
                                 )
                                 pending_args[call_id] = inner_args_str
+
+                        logger.info(
+                            "TOOL_RESULT call_id=%s tool=%s is_error=%s preview=%s",
+                            call_id, tool_name, is_error,
+                            "[browser payload omitted]" if is_browser_tool(tool_name)
+                            else error_detail.replace("\n", " ")[:400],
+                        )
 
                         # For tool_search, parse the returned tool list and attach
                         # it to the complete event so the UI can render which tools

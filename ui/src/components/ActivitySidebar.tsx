@@ -11,6 +11,10 @@ interface ActivitySidebarProps {
 function parseToolInfo(raw: string): { name: string; icon: string; category: string; source: string } {
   const lower = raw.toLowerCase();
 
+  if (lower === "browser_automation" || lower.startsWith("browser_automation___")) {
+    return { name: "Browse Status Dashboard", icon: "language", category: "browser", source: "Browser Automation" };
+  }
+
   // Skill loading
   if (lower === "load_skill" || lower.includes("load_skill")) {
     return { name: "Load Skill", icon: "psychology", category: "skill", source: "Agent Framework" };
@@ -77,6 +81,8 @@ function categoryColor(category: string): string {
       return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
     case "discovery":
       return "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300";
+    case "browser":
+      return "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300";
     default:
       return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
   }
@@ -316,8 +322,9 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
               const status = statusMeta(activity.status);
               const isExpanded = expandedIds.has(activity.id);
               const isSkill = tool.category === "skill";
+              const isBrowser = tool.category === "browser";
               const skillName = isSkill ? getSkillName(activity) : null;
-              const argEntries = !isSkill ? parseArgs(activity.args, activity.tool) : null;
+              const argEntries = !isSkill && !isBrowser ? parseArgs(activity.args, activity.tool) : null;
 
               return (
                 <div key={activity.id} className="relative">
@@ -373,7 +380,9 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                           </span>
                         </div>
                       ) : (() => {
-                        const displayArgs = argEntries || extractDetailContext(activity);
+                        const displayArgs: Array<[string, string]> | null = isBrowser
+                          ? [["site", "Status Dashboard"]]
+                          : argEntries || extractDetailContext(activity);
                         return (
                         /* Tool call */
                         <div className="space-y-1.5">
@@ -383,9 +392,11 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                               <span className="material-icons-outlined text-[11px]">dns</span>
                               {tool.source}
                             </span>
-                            <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
-                              {shortenToolName(activity.tool)}
-                            </span>
+                            {!isBrowser && (
+                              <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
+                                {shortenToolName(activity.tool)}
+                              </span>
+                            )}
                             <span className={`ml-auto shrink-0 text-[10px] ${
                               activity.status === "complete" ? "text-green-500" : "text-gray-400"
                             }`}>
@@ -408,7 +419,7 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                             <div className="border-t border-red-100 pt-1.5 text-[11px] text-red-600 dark:border-red-900 dark:text-red-400">
                               <p className="font-medium">Tool call failed</p>
                               <p className="mt-0.5 whitespace-pre-wrap break-words">
-                                {activity.result || activity.detail}
+                                {isBrowser ? "Could not read Status Dashboard" : activity.result || activity.detail}
                               </p>
                             </div>
                           )}

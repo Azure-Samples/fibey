@@ -14,7 +14,7 @@ def output_event(kind, item):
 
 
 class HostedGatewayTests(unittest.TestCase):
-    def chat_events(self, upstream_events):
+    def chat_events(self, upstream_events, message="Brief me on WO-007."):
         stream = "".join(
             f"data: {json.dumps(event)}\n\n" for event in upstream_events
         )
@@ -33,7 +33,7 @@ class HostedGatewayTests(unittest.TestCase):
         ):
             credential.return_value.get_token.return_value = SimpleNamespace(token="test-token")
             response = client.post("/api/chat", json={
-                "message": "Brief me on WO-007.", "session_id": "gateway-test",
+                "message": message, "session_id": "gateway-test",
             })
         self.assertEqual(response.status_code, 200)
         events = []
@@ -45,6 +45,40 @@ class HostedGatewayTests(unittest.TestCase):
                 raw if raw == "[DONE]" else json.loads(raw),
             ))
         return events
+
+    def test_status_question_names_the_site_without_forwarding_browser_session_data(self):
+        live_view = "https://browser.example/live?token=private-session"
+        tool = "browser_automation___create_browser_session"
+        call = {
+            "type": "function_call", "id": "fc-browser", "call_id": "call-browser",
+            "name": "call_tool", "arguments": json.dumps({
+                "name": tool,
+                "arguments": {"liveViewUrl": live_view, "browserSessionId": "private-session"},
+            }),
+        }
+        answer = "NE-3 has an outage. [Status Dashboard](https://status.example/)"
+        events = self.chat_events([
+            output_event("added", {**call, "arguments": ""}),
+            output_event("done", call),
+            output_event("done", {
+                "type": "function_call_output", "call_id": "call-browser",
+                "output": json.dumps({"liveViewUrl": live_view}),
+            }),
+            {"type": "response.output_text.delta", "delta": answer},
+            {"type": "response.failed", "error": "Model unavailable"},
+        ], message="Any alerts on NE-3?")
+        activities = [data for kind, data in events if kind == "activity"]
+        self.assertEqual([data["status"] for data in activities], ["running", "complete"])
+        for data in activities:
+            self.assertEqual(data["tool"], tool)
+            self.assertEqual(data["call_id"], "call-browser")
+            self.assertEqual(data["detail"], "Status Dashboard")
+            self.assertEqual(json.loads(data["args"]), {"site": "Status Dashboard"})
+            self.assertEqual(data["result"], "")
+        self.assertNotIn("private-session", json.dumps(events))
+        self.assertIn(("delta", {"content": answer}), events)
+        self.assertIn(("error", {"message": "Agent error: Model unavailable"}), events)
+        self.assertEqual(events[-1], ("done", "[DONE]"))
 
     def test_loaded_skill_keeps_its_name_and_arguments_in_the_activity_sidebar(self):
         call = {
@@ -73,6 +107,44 @@ class HostedGatewayTests(unittest.TestCase):
         self.assertEqual(json.loads(completed[0]["args"]), {"skill_name": "field-briefing"})
         self.assertIn(("delta", {"content": "WO-007 briefing"}), events)
         self.assertEqual(events[-1], ("done", "[DONE]"))
+
+    def test_browser_mcp_lifecycle_events_keep_the_site_and_hide_session_links(self):
+        tool = "browser_automation___browser_navigate"
+        live_view = "https://browser.example/live?token=private-session"
+        call = {
+            "type": "mcp_call", "id": "mcp-browser", "name": tool,
+            "arguments": '{"url":"https://status.example/","browserSessionId":"private-session"}',
+        }
+        endings = [
+            (output_event("done", {**call, "output": live_view}), "complete"),
+            (output_event("done", {**call, "error": live_view}), "error"),
+            (output_event("done", {
+                **call, "output": json.dumps({"isError": True, "error": live_view}),
+            }), "error"),
+            *(
+                ({"type": kind, "item_id": "mcp-browser", field: live_view}, status)
+                for kind, field, status in (
+                    ("response.mcp_call.completed", "output", "complete"),
+                    ("response.mcp_call_completed", "result", "complete"),
+                    ("response.mcp_call.failed", "error", "error"),
+                    ("response.mcp_call_failed", "error", "error"),
+                )
+            ),
+        ]
+        for ending, status in endings:
+            with self.subTest(kind=ending["type"], status=status):
+                events = self.chat_events([
+                    output_event("added", call), ending,
+                ], message="Is NE-3 healthy?")
+                activities = [data for kind, data in events if kind == "activity"]
+                self.assertEqual([data["status"] for data in activities], ["running", status])
+                for data in activities:
+                    self.assertEqual(data["tool"], tool)
+                    self.assertEqual(json.loads(data["args"]), {"site": "Status Dashboard"})
+                    self.assertEqual(data["result"], "")
+                self.assertNotIn("private-session", json.dumps(events))
+                if status == "error":
+                    self.assertEqual(activities[-1]["detail"], "Could not read Status Dashboard")
 
     def test_discovery_and_wrapped_calls_expose_operational_tools(self):
         tool = "inventory___check_stock_batch"

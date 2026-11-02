@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
-from fibey.tool_results import tool_result_is_error, tool_search_results
+from fibey.tool_results import is_browser_tool, tool_result_is_error, tool_search_results
 
 load_dotenv()
 
@@ -43,6 +43,17 @@ _hosted_sessions: dict[str, str] = {}
 
 def _sse(event: str, data: dict | str) -> str:
     """Format a server-sent event."""
+    if event == "activity" and isinstance(data, dict) and is_browser_tool(data.get("tool", "")):
+        # Browser session payloads can contain sensitive Live View links.
+        data = {
+            "tool": data["tool"],
+            "call_id": data.get("call_id", ""),
+            "status": data.get("status", ""),
+            "detail": "Could not read Status Dashboard" if data.get("status") == "error" else "Status Dashboard",
+            "args": json.dumps({"site": "Status Dashboard"}),
+            "result": "",
+            "results": [],
+        }
     payload = json.dumps(data) if isinstance(data, dict) else data
     return f"event: {event}\ndata: {payload}\n\n"
 
@@ -234,11 +245,13 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                                 })
                             elif item_type == "mcp_call":
                                 # MCP call output is on the mcp_call item itself
+                                call = _hosted_call_details({**calls.get(call_id, {}), **item})
+                                tool_name = call["name"]
                                 output = item.get("output", "") or item.get("result", "")
                                 error = item.get("error")
-                                if error:
+                                if error or (is_browser_tool(tool_name) and tool_result_is_error(output)):
                                     yield _sse("activity", {
-                                        "tool": item.get("name", ""),
+                                        "tool": tool_name,
                                         "call_id": call_id,
                                         "status": "error",
                                         "detail": f"Error: {error}"[:200],
@@ -248,11 +261,11 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                                 else:
                                     out_str = output if isinstance(output, str) else json.dumps(output)
                                     yield _sse("activity", {
-                                        "tool": item.get("name", ""),
+                                        "tool": tool_name,
                                         "call_id": call_id,
                                         "status": "complete",
                                         "detail": "Done",
-                                        "args": item.get("arguments", ""),
+                                        "args": call["arguments"],
                                         "result": out_str[:2000],
                                     })
                             elif item_type in ("mcp_call_output", "function_call_output"):
@@ -281,7 +294,7 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                             output = event.get("output", "") or event.get("result", "")
                             out_str = output if isinstance(output, str) else json.dumps(output)
                             yield _sse("activity", {
-                                "tool": event.get("name", ""),
+                                "tool": event.get("name") or calls.get(call_id, {}).get("name", ""),
                                 "call_id": call_id,
                                 "status": "complete",
                                 "detail": "Done",
@@ -292,7 +305,7 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                             call_id = event.get("call_id", "") or event.get("item_id", "")
                             err = event.get("error", "MCP call failed")
                             yield _sse("activity", {
-                                "tool": event.get("name", ""),
+                                "tool": event.get("name") or calls.get(call_id, {}).get("name", ""),
                                 "call_id": call_id,
                                 "status": "error",
                                 "detail": str(err)[:200],

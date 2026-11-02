@@ -2,6 +2,10 @@ import json
 from typing import Any
 
 
+def is_browser_tool(name: str) -> bool:
+    return name == "browser_automation" or name.startswith("browser_automation___")
+
+
 def tool_result_is_error(result: Any) -> bool:
     if isinstance(result, str):
         if result.lstrip().lower().startswith("error:"):
