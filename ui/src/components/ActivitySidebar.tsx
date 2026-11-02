@@ -211,9 +211,31 @@ function getSkillName(activity: ActivityEvent): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+function groupDashboardActivities(activities: ActivityEvent[], isStreaming: boolean): ActivityEvent[] {
+  const browserCalls = activities.filter((activity) => parseToolInfo(activity.tool).category === "browser");
+  const first = browserCalls[0];
+  if (!first) return activities;
+
+  // Activities belong to the current chat turn and one configured dashboard.
+  const dashboard: ActivityEvent = {
+    id: `dashboard-${first.call_id || first.id}`,
+    tool: "browser_automation",
+    status: browserCalls.some((activity) => activity.status === "error") ? "error"
+      : isStreaming || browserCalls.some((activity) => activity.status === "running") ? "running"
+      : browserCalls.some((activity) => activity.status === "pending") ? "pending" : "complete",
+    detail: "Status Dashboard",
+    timestamp: first.timestamp,
+  };
+  return activities.flatMap((activity) =>
+    activity === first ? [dashboard]
+      : parseToolInfo(activity.tool).category === "browser" ? [] : [activity],
+  );
+}
+
 export default function ActivitySidebar({ activities, isStreaming, onClear }: ActivitySidebarProps) {
-  const completed = activities.filter((a) => a.status === "complete").length;
-  const running = activities.filter((a) => a.status === "running").length;
+  const displayActivities = groupDashboardActivities(activities, isStreaming);
+  const completed = displayActivities.filter((a) => a.status === "complete").length;
+  const running = displayActivities.filter((a) => a.status === "running").length;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [width, setWidth] = useState(288); // 18rem = 288px default
   const isResizing = useRef(false);
@@ -306,7 +328,7 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
 
             {(() => {
               const invokedToolNames = new Set(
-                activities
+                displayActivities
                   .map((a) => a.tool)
                   .filter(
                     (t) =>
@@ -317,7 +339,7 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                   ),
               );
               const invokedTools = Array.from(invokedToolNames);
-              return activities.map((activity) => {
+              return displayActivities.map((activity) => {
               const tool = parseToolInfo(activity.tool);
               const status = statusMeta(activity.status);
               const isExpanded = expandedIds.has(activity.id);
@@ -448,10 +470,11 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                                           check_circle
                                         </span>
                                         <span className="font-mono text-[10px] font-semibold break-all text-gray-800 dark:text-gray-100">
-                                          {shortenToolName(r.name)}
+                                          {parseToolInfo(r.name).category === "browser"
+                                            ? "Browse Status Dashboard" : shortenToolName(r.name)}
                                         </span>
                                       </div>
-                                      {r.description && (
+                                      {parseToolInfo(r.name).category !== "browser" && r.description && (
                                         <div className="mt-0.5 pl-[18px] text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                                           {r.description}
                                         </div>
@@ -488,7 +511,7 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
           </span>
           <span className="flex items-center gap-1">
             <span className="material-icons-outlined text-[13px]">tag</span>
-            {activities.length}
+            {displayActivities.length}
           </span>
         </div>
       </div>

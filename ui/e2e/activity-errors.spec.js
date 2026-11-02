@@ -1,16 +1,37 @@
 import { test, expect } from "@playwright/test";
 
-test("browser activity names the Status Dashboard and Browser Automation source", async ({ page }) => {
-  const tool = "browser_automation___browser_navigate";
+test("related browser calls form one site-only activity without grouping other tools", async ({ page }) => {
+  const browserTools = [
+    "browser_automation___create_browser_session",
+    "browser_automation___browser_navigate",
+    "browser_automation___browser_snapshot",
+    "browser_automation___close_browser_session",
+  ];
+  const stockTool = "inventory___check_stock";
   const events = [
     ["activity", {
-      tool, call_id: "browser-call", status: "running",
-      detail: "Status Dashboard", args: '{"site":"Status Dashboard"}',
+      tool: "tool_search", call_id: "search-call", status: "running",
     }],
     ["activity", {
-      tool, call_id: "browser-call", status: "complete",
-      detail: "Status Dashboard", args: '{"site":"Status Dashboard"}', result: "",
+      tool: "tool_search", call_id: "search-call", status: "complete",
+      results: browserTools.map((name) => ({ name, description: "Internal browser operation" })),
     }],
+    ...browserTools.flatMap((tool, i) => [
+      ["activity", {
+        tool, call_id: `browser-call-${i}`, status: "running",
+        detail: "Status Dashboard",
+        args: '{"url":"https://status.example/","browserSessionId":"private-session","depth":4}',
+      }],
+      ["activity", {
+        tool, call_id: `browser-call-${i}`, status: "complete",
+        detail: "Status Dashboard",
+        result: "https://browser.example/live?token=private-session",
+      }],
+      ...(i === 1 ? [
+        ["activity", { tool: stockTool, call_id: "stock-call", status: "running" }],
+        ["activity", { tool: stockTool, call_id: "stock-call", status: "complete" }],
+      ] : []),
+    ]),
     ["delta", { content: "NE-3 has an outage. [Status Dashboard](https://status.example/)" }],
     ["done", "[DONE]"],
   ];
@@ -27,12 +48,94 @@ test("browser activity names the Status Dashboard and Browser Automation source"
 
   const activity = page.getByRole("button", { name: "Browse Status Dashboard: Done", exact: true });
   await expect(activity).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Check Stock: Done", exact: true })).toHaveCount(1);
   await activity.click();
   await expect(page.getByText("Browser Automation")).toBeVisible();
   await expect(page.getByText("Status Dashboard", { exact: true }).last()).toBeVisible();
-  await expect(page.getByText("browser_navigate", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Tool Search: Done", exact: true }).click();
+  await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+  await expect(page.getByText(/browserSessionId|private-session|browser_navigate|depth:|Internal browser operation/)).toHaveCount(0);
+  await expect(page.getByText("https://status.example/", { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href="https://status.example/"]')).toBeVisible();
   await expect(page.getByPlaceholder("Ask Fibey something...")).toBeEnabled();
+});
+
+test("the browser group stays running between steps, retains failures, and resets next turn", async ({ page }) => {
+  await page.addInitScript(() => {
+    const fetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (input !== "/api/chat") return fetch(input, init);
+      return Promise.resolve(new Response(new ReadableStream({
+        start(controller) {
+          window.emitChatEvents = (events, close) => {
+            const body = events.map(([event, data]) =>
+              `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+            ).join("");
+            controller.enqueue(new TextEncoder().encode(body));
+            if (close) controller.close();
+          };
+        },
+      }), { headers: { "Content-Type": "text/event-stream" } }));
+    };
+  });
+  const publish = (events, close = false) => page.evaluate(
+    ({ events, close }) => window.emitChatEvents(events, close), { events, close },
+  );
+  const browserEvent = (operation, status) => ["activity", {
+    tool: `browser_automation___${operation}`,
+    call_id: operation,
+    status,
+    detail: "Status Dashboard",
+    result: status === "error" ? "https://browser.example/live?token=private-session" : "",
+  }];
+  await page.goto("/");
+  const input = page.getByPlaceholder("Ask Fibey something...");
+  await input.fill("Any alerts on NE-3?");
+  await input.press("Enter");
+  await expect(input).toBeDisabled();
+  await publish([
+    browserEvent("create_browser_session", "running"),
+  ]);
+  const running = page.getByRole("button", { name: "Browse Status Dashboard: Running", exact: true });
+  await expect(running).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Browse Status Dashboard: Done", exact: true })).toHaveCount(0);
+  await running.click();
+  await expect(page.getByText("Browser Automation")).toBeVisible();
+  await publish([browserEvent("create_browser_session", "complete")]);
+  await expect(running).toHaveCount(1);
+  await expect(page.getByText("Browser Automation")).toBeVisible();
+  await publish([
+    browserEvent("browser_snapshot", "running"),
+    browserEvent("browser_snapshot", "complete"),
+  ]);
+  await expect(running).toHaveCount(1);
+  await expect(page.getByText("Browser Automation")).toBeVisible();
+  await publish([
+    browserEvent("browser_navigate", "running"),
+    browserEvent("browser_navigate", "error"),
+    browserEvent("close_browser_session", "running"),
+    browserEvent("close_browser_session", "complete"),
+    ["delta", { content: "I couldn't read the Status Dashboard." }],
+    ["done", "[DONE]"],
+  ], true);
+  await expect(page.getByRole("button", { name: "Browse Status Dashboard: Error", exact: true })).toHaveCount(1);
+  await expect(page.getByText("Could not read Status Dashboard", { exact: true })).toBeVisible();
+  await expect(page.getByText("Browser Automation")).toBeVisible();
+  await expect(page.getByText(/private-session/)).toHaveCount(0);
+  await expect(input).toBeEnabled();
+
+  await input.fill("Try the dashboard again.");
+  await input.press("Enter");
+  await expect(input).toBeDisabled();
+  await publish([
+    browserEvent("browser_snapshot", "running"),
+    browserEvent("browser_snapshot", "complete"),
+    ["delta", { content: "The dashboard is available now." }],
+    ["done", "[DONE]"],
+  ], true);
+  await expect(page.getByRole("button", { name: "Browse Status Dashboard: Done", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Browse Status Dashboard: Error", exact: true })).toHaveCount(0);
+  await expect(input).toBeEnabled();
 });
 
 test("a failed knowledge call stays one activity and exposes its error", async ({ page }) => {
