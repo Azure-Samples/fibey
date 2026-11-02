@@ -20,6 +20,17 @@ param aiDeploymentsLocation string = ''
 @description('Azure region for the AI Search service. Defaults to the primary location. Override when the primary region is out of search capacity.')
 param searchServiceLocation string = ''
 
+@description('Azure region for Browser Automation. Defaults to eastus independently of the Foundry region.')
+@allowed([
+  'australiaeast'
+  'eastus'
+  'japaneast'
+  'switzerlandnorth'
+  'westeurope'
+  'westus3'
+])
+param playwrightLocation string = 'eastus'
+
 @description('Id of the user or app to assign application roles.')
 param principalId string = ''
 
@@ -112,6 +123,7 @@ module resources 'resources.bicep' = {
     location: location
     aiDeploymentsLocation: resolvedAiDeploymentsLocation
     searchServiceLocation: resolvedSearchServiceLocation
+    playwrightLocation: playwrightLocation
     tags: tags
     principalId: principalId
     principalType: principalType
@@ -159,6 +171,9 @@ output FOUNDRY_MODEL string = foundryModel
 output TOOLBOX_NAME string = toolboxName
 output TOOLBOX_MCP_URL string = resources.outputs.toolboxMcpUrl
 output KB_NAME string = knowledgeBaseName
+output AZURE_PLAYWRIGHT_WORKSPACE_NAME string = resources.outputs.playwrightWorkspaceName
+output AZURE_PLAYWRIGHT_WORKSPACE_ID string = resources.outputs.playwrightWorkspaceId
+output BROWSER_AUTOMATION_CONNECTION_NAME string = resources.outputs.browserAutomationConnectionName
 
 // Knowledge base resources
 output AZURE_SEARCH_ENDPOINT string = resources.outputs.searchServiceEndpoint

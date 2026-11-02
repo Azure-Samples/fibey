@@ -22,6 +22,7 @@ The deployment creates all resources in a single resource group (`rg-<env-name>`
 | Work Orders API | Container App | `services/work-orders-api/` | Work order CRUD backend |
 | Inventory MCP | Container App | `services/inventory-mcp/` | Inventory MCP server |
 | Status Dashboard | Container App | `services/status-dashboard/` | Network/service status page |
+| Playwright workspace + connection | Azure App Testing / Foundry | `infra/modules/playwright-workspace.bicep` | Managed browser infrastructure for Browser Automation |
 | AI Foundry account + project | Microsoft Foundry | `infra/core/ai/` | Hosts the model deployment, hosted agent, and toolbox |
 | Model deployment | Foundry | `azure.yaml` | `gpt-4.1-mini` (configurable) |
 | Foundry Toolbox + skills | Foundry (postdeploy) | `scripts/setup-toolbox.sh` | Single MCP endpoint for backend tools and skill resources |
@@ -56,8 +57,8 @@ azd up
 
 1. **Provision** — creates the resource group, AI Foundry account + project,
    model deployment, AI Search, storage, ACR, Container Apps environment, all
-   five container apps, the Foundry knowledge-base connection, and all RBAC
-   assignments (Bicep in `infra/`).
+   five container apps, the Playwright workspace, the Foundry knowledge-base
+   and Browser Automation connections, and all RBAC assignments (Bicep in `infra/`).
 2. **Postprovision hook** — uploads FoundryIQ docs, builds the search index,
    and creates the knowledge source/base (`scripts/setup-knowledge-base.sh`).
 3. **Deploy** — builds and pushes container images for all apps and deploys
@@ -102,7 +103,7 @@ unchanged. Other Azure resources retain their own environment-name constraints.
 Use `azd show -e <environment>` to find the actual resource names and endpoints
 rather than constructing them.
 
-Run the read-only Container App naming regression against an authorized test
+Run the read-only infrastructure naming regression against an authorized test
 resource group:
 
 ```bash
@@ -112,6 +113,33 @@ FIBEY_INFRA_TEST_RESOURCE_GROUP=rg-<test-environment> \
 
 This checks resolved ARM what-if names; preview/template validation alone can
 miss nested resource-provider naming constraints.
+
+## Browser Automation infrastructure
+
+`azd provision` creates a Playwright workspace named `pww-<resource-token>` and
+a `browser-automation` connection in the Foundry project. The connection uses
+`ProjectManagedIdentity`, the workspace's MCP endpoint, and the
+`https://mcp.playwright.microsoft.com` audience. Bicep assigns **Playwright
+Workspace Contributor** to the project managed identity at workspace scope.
+Service access tokens are disabled; regional affinity is disabled to keep
+browser sessions in the selected workspace region.
+
+`AZURE_PLAYWRIGHT_LOCATION` defaults to `eastus`, independently of the primary
+and Foundry regions, so existing `eastus2` deployments need not move. Bicep
+accepts only the intersection of the documented
+[Browser Automation regions](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/browser-automation#regional-support)
+and [hosted-agent regions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability):
+`australiaeast`, `eastus`, `japaneast`, `switzerlandnorth`, `westeurope`, and
+`westus3` (checked 2026-11-01). `eastasia` supports Browser Automation but not
+hosted agents; `eastus2` supports hosted agents but not Browser Automation.
+
+Provisioning exports `AZURE_PLAYWRIGHT_WORKSPACE_NAME`,
+`AZURE_PLAYWRIGHT_WORKSPACE_ID`, and `BROWSER_AUTOMATION_CONNECTION_NAME`.
+The connection should appear under the Foundry project's connected resources.
+Read-only ARM what-if checks cover workspace/connection naming and unsupported
+regions; live provisioning and connection visibility have not been verified.
+The Toolbox publisher does **not** yet attach Browser Automation, so this
+infrastructure change alone does not enable Status Dashboard browsing.
 
 ## Environment variables
 
@@ -127,6 +155,7 @@ environment automatically. Useful configuration values:
 | `AZURE_SEARCH_INDEX` | `foundry-iq-docs-index` | Search index name |
 | `AZURE_AI_PROJECT_NAME` | `fibey-project` | Foundry project name |
 | `AZURE_AI_DEPLOYMENTS_LOCATION` | primary location | Region for the Foundry account/models |
+| `AZURE_PLAYWRIGHT_LOCATION` | `eastus` | Playwright region; must also support hosted agents |
 | `IGNORE_STORAGE_SECURITY_CONTROL` | `false` | Opt-in `SecurityControl: Ignore` storage tag; use only with explicit approval for a demo environment |
 
 The hosted model is selected by `AZURE_AI_MODEL_DEPLOYMENT_NAME` in `agent.yaml`
@@ -211,6 +240,7 @@ runtime identity's project-scoped access, verified in #36:
 | Foundry project + account | Search Index Data Reader | AI Search service |
 | AI Search | Storage Blob Data Reader | Storage account |
 | Foundry project | AcrPull | Container registry |
+| Foundry project | Playwright Workspace Contributor | Playwright workspace |
 | Hosted agent runtime identity | Foundry User | Foundry project (hosted capability-host identity assignment) |
 | Developer/deployment principal | Foundry User | Foundry project |
 

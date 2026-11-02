@@ -17,6 +17,9 @@
     "searchServiceLocation": {
       "value": "${AZURE_SEARCH_LOCATION=}"
     },
+    "playwrightLocation": {
+      "value": "${AZURE_PLAYWRIGHT_LOCATION=eastus}"
+    },
     "principalId": {
       "value": "${AZURE_PRINCIPAL_ID}"
     },

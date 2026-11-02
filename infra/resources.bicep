@@ -12,6 +12,9 @@ param aiDeploymentsLocation string
 @description('Azure region for the AI Search service.')
 param searchServiceLocation string
 
+@description('Azure region for the Playwright workspace.')
+param playwrightLocation string
+
 @description('Tags applied to all resources.')
 param tags object
 
@@ -117,6 +120,8 @@ var logAnalyticsWorkspaceName = '${environmentName}-logs'
 var registryName = 'acr${take(sanitizedEnvironmentName, 15)}${take(resourceToken, 8)}'
 var storageAccountName = 'st${take(sanitizedEnvironmentName, 10)}${take(resourceToken, 12)}'
 var searchServiceName = '${environmentName}-search'
+var playwrightWorkspaceName = 'pww-${resourceToken}'
+var browserAutomationConnectionName = 'browser-automation'
 
 func containerAppName(environment string, service string, token string) string => contains([
   length('${environment}-${service}') <= 32
@@ -142,6 +147,7 @@ var kbConnectionName = 'kb-${knowledgeBaseName}'
 var roleSearchIndexDataReader = '1407120a-92aa-4202-b7e9-c0e197c71c8f'
 var roleStorageBlobDataReader = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 var roleStorageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+var rolePlaywrightWorkspaceContributor = '78cf819f-0969-4ebe-8759-015c6efcd5bf'
 
 module logAnalytics 'modules/log-analytics.bicep' = {
   name: 'log-analytics'
@@ -179,6 +185,15 @@ module aiSearch 'modules/ai-search.bicep' = {
     location: searchServiceLocation
     tags: tags
     sku: 'basic'
+  }
+}
+
+module playwrightWorkspace 'modules/playwright-workspace.bicep' = {
+  name: 'playwright-workspace'
+  params: {
+    name: playwrightWorkspaceName
+    location: playwrightLocation
+    tags: tags
   }
 }
 
@@ -225,6 +240,45 @@ var foundryProjectEndpoint = aiProject.outputs.FOUNDRY_PROJECT_ENDPOINT
 var toolboxMcpUrl = '${foundryProjectEndpoint}/toolboxes/${toolboxName}/mcp'
 
 // ─── RBAC ───
+
+resource playwrightWorkspaceRef 'Microsoft.LoadTestService/playwrightWorkspaces@2025-09-01' existing = {
+  name: playwrightWorkspaceName
+  dependsOn: [
+    playwrightWorkspace
+  ]
+}
+
+resource projectPlaywrightContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(playwrightWorkspaceRef.id, aiFoundryProjectName, rolePlaywrightWorkspaceContributor)
+  scope: playwrightWorkspaceRef
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', rolePlaywrightWorkspaceContributor)
+    principalId: aiProject.outputs.projectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+module browserAutomationConnection 'core/ai/connection.bicep' = {
+  name: 'browser-automation-connection'
+  params: {
+    aiServicesAccountName: aiProject.outputs.aiServicesAccountName
+    aiProjectName: aiProject.outputs.projectName
+    connectionConfig: {
+      name: browserAutomationConnectionName
+      category: 'PlaywrightWorkspace'
+      target: playwrightWorkspace.outputs.mcpEndpoint
+      authType: 'ProjectManagedIdentity'
+      audience: 'https://mcp.playwright.microsoft.com'
+      isSharedToAll: true
+      metadata: {
+        resourceId: playwrightWorkspace.outputs.id
+      }
+    }
+  }
+  dependsOn: [
+    projectPlaywrightContributorRole
+  ]
+}
 
 // AI Search managed identity reads FoundryIQ documents from blob storage
 resource storageAccountRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
@@ -473,3 +527,6 @@ output gatewayFqdn string = gateway.outputs.fqdn
 output inventoryMcpFqdn string = inventoryMcp.outputs.fqdn
 output workOrdersApiFqdn string = workOrdersApi.outputs.fqdn
 output statusDashboardFqdn string = statusDashboard.outputs.fqdn
+output playwrightWorkspaceName string = playwrightWorkspace.outputs.name
+output playwrightWorkspaceId string = playwrightWorkspace.outputs.id
+output browserAutomationConnectionName string = browserAutomationConnection.outputs.connectionName

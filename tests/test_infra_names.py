@@ -11,7 +11,7 @@ import unittest
     "Set FIBEY_INFRA_TEST_RESOURCE_GROUP to run read-only Azure naming checks",
 )
 class ContainerAppNameTests(unittest.TestCase):
-    def planned_names(self, environment_name: str) -> list[str]:
+    def what_if(self, environment_name: str, *parameters: str) -> subprocess.CompletedProcess[str]:
         principal_id = subprocess.run(
             ["az", "ad", "signed-in-user", "show", "--query", "id", "-o", "tsv"],
             check=True,
@@ -19,7 +19,7 @@ class ContainerAppNameTests(unittest.TestCase):
             text=True,
             timeout=60,
         ).stdout.strip()
-        result = subprocess.run(
+        return subprocess.run(
             [
                 "az", "deployment", "sub", "what-if",
                 "--name", "fibey-container-app-name-test",
@@ -31,6 +31,7 @@ class ContainerAppNameTests(unittest.TestCase):
                 "location=eastus2",
                 "searchServiceLocation=westus2",
                 f"principalId={principal_id}",
+                *parameters,
                 "--validation-level", "Template",
                 "--no-pretty-print",
                 "--only-show-errors",
@@ -41,10 +42,17 @@ class ContainerAppNameTests(unittest.TestCase):
             text=True,
             timeout=180,
         )
+
+    def planned_resource_ids(self, environment_name: str) -> list[str]:
+        result = self.what_if(environment_name)
         self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def planned_names(self, environment_name: str) -> list[str]:
+        resource_ids = self.planned_resource_ids(environment_name)
         names = [
             match.group(1)
-            for resource_id in json.loads(result.stdout)
+            for resource_id in resource_ids
             if (match := re.fullmatch(
                 r"/subscriptions/[^/]+/resourceGroups/[^/]+"
                 r"/providers/Microsoft.App/containerApps/([^/]+)",
@@ -52,8 +60,45 @@ class ContainerAppNameTests(unittest.TestCase):
                 re.IGNORECASE,
             ))
         ]
-        self.assertEqual(len(names), 5, result.stdout)
+        self.assertEqual(len(names), 5, resource_ids)
         return names
+
+    def test_browser_automation_resources_have_valid_names_for_long_environments(self):
+        names = []
+        for environment_name in (
+            "fibey-clean-1101",
+            "fibey-" + "a" * 57 + "1",
+            "fibey-" + "a" * 57 + "2",
+        ):
+            resource_ids = self.planned_resource_ids(environment_name)
+            workspaces = [
+                match.group(1)
+                for resource_id in resource_ids
+                if (match := re.fullmatch(
+                    r"/subscriptions/[^/]+/resourceGroups/[^/]+"
+                    r"/providers/Microsoft.LoadTestService/playwrightWorkspaces/([^/]+)",
+                    resource_id,
+                    re.IGNORECASE,
+                ))
+            ]
+            self.assertEqual(len(workspaces), 1, resource_ids)
+            self.assertRegex(workspaces[0], r"^[a-zA-Z0-9-]{3,24}$")
+            connections = [
+                resource_id.rsplit("/", 1)[-1]
+                for resource_id in resource_ids
+                if resource_id.endswith("/projects/fibey-project/connections/browser-automation")
+            ]
+            self.assertEqual(connections, ["browser-automation"], resource_ids)
+            names.extend(workspaces)
+        self.assertEqual(len(set(names)), 3, names)
+
+    def test_playwright_rejects_regions_without_hosted_agent_or_browser_support(self):
+        for region in ("eastasia", "eastus2"):
+            with self.subTest(region=region):
+                result = self.what_if("fibey-clean-1101", f"playwrightLocation={region}")
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn("playwrightLocation", result.stderr)
+                self.assertIn("allowed", result.stderr.lower())
 
     def test_all_app_names_fit_at_the_environment_name_boundary(self):
         for environment_name in ("fibey-clean-110", "fibey-clean-1101"):
