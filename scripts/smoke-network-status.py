@@ -124,12 +124,9 @@ def main() -> None:
             "NE-3" in output and "OLT-NE-201" in output for output in successful_reads
         ),
         "Status Dashboard citation": bool(re.search(
-            r"\[Status Dashboard\]\(" + re.escape(dashboard) + r"/?\)", answer,
+            r"(?:Source:\s*|[-*]\s*(?:📄\s*)?)Status Dashboard\s*$", answer, re.MULTILINE,
         )),
-        "no browser session links in answer": all(
-            link.rstrip("/") == dashboard.rstrip("/")
-            for link in re.findall(r"https?://[^\s)<>]+", answer)
-        ),
+        "no URLs in answer": not re.search(r"https?://", answer),
         **{
             label: bool(re.search(pattern, answer, re.IGNORECASE))
             for label, pattern in FACTS.items()

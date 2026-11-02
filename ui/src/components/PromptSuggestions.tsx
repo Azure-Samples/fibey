@@ -36,10 +36,13 @@ const suggestions: Suggestion[] = [
   },
   {
     prompt:
-      "What safety protocols should a technician review before performing aerial cable installation?",
+      "Give me a full field briefing for WO-007: parts availability, procedures, safety, and network alerts and incidents for NE-3 Access Ring and OLT-NE-201.",
     tags: [
-      { label: "knowledge-retrieval", color: "red" },
-      { label: "FoundryIQ", color: "green" },
+      { label: "field-briefing", color: "red" },
+      { label: "Work Orders API", color: "green" },
+      { label: "Inventory MCP", color: "yellow" },
+      { label: "FoundryIQ", color: "yellow" },
+      { label: "Browser Automation", color: "yellow" },
     ],
   },
   {

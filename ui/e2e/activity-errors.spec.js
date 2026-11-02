@@ -1,5 +1,36 @@
 import { test, expect } from "@playwright/test";
 
+for (const citation of [
+  "Source: Status Dashboard",
+  "Source: [Status Dashboard](https://status.example/)",
+  "- 📄 Status Dashboard",
+  "- 📄 [Status Dashboard](https://status.example/)\n- 📄 Installation Standards",
+]) {
+  test(`dashboard attribution uses source-only pills: ${citation}`, async ({ page }) => {
+    const events = [
+      ["delta", { content: `NE-3 has an outage.\n\n---\n**Sources**\n- 📄 Safety Protocols\n\n${citation}` }],
+      ["done", "[DONE]"],
+    ];
+    await page.route("**/api/chat", (route) => route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: events.map(([event, data]) =>
+        `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+      ).join(""),
+    }));
+    await page.goto("/");
+    await page.getByPlaceholder("Ask Fibey something...").fill("Brief me with network status.");
+    await page.getByPlaceholder("Ask Fibey something...").press("Enter");
+
+    await expect(page.locator(".source-pill").filter({ hasText: "Safety Protocols" })).toHaveCount(1);
+    await expect(page.locator(".source-pill").filter({ hasText: "Status Dashboard" })).toHaveText("descriptionStatus Dashboard");
+    await expect(page.locator('a[href="https://status.example/"]')).toHaveCount(0);
+    await expect(page.getByText("https://status.example/", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".source-pill").filter({ hasText: /https?:\/\// })).toHaveCount(0);
+    await expect(page.locator(".markdown-body").last()).toHaveText("NE-3 has an outage.");
+  });
+}
+
 test("related browser calls form one site-only activity without grouping other tools", async ({ page }) => {
   const browserTools = [
     "browser_automation___create_browser_session",
@@ -10,7 +41,16 @@ test("related browser calls form one site-only activity without grouping other t
   const stockTool = "inventory___check_stock";
   const events = [
     ["activity", {
+      tool: "tool_search", call_id: "core-search", status: "running",
+      args: '{"query":"check stock for parts","limit":10}',
+    }],
+    ["activity", {
+      tool: "tool_search", call_id: "core-search", status: "complete",
+      results: [{ name: stockTool, description: "Check part availability" }],
+    }],
+    ["activity", {
       tool: "tool_search", call_id: "search-call", status: "running",
+      args: '{"query":"browser create_browser_session browser_navigate browser_snapshot close_browser_session","limit":10}',
     }],
     ["activity", {
       tool: "tool_search", call_id: "search-call", status: "complete",
@@ -52,12 +92,67 @@ test("related browser calls form one site-only activity without grouping other t
   await activity.click();
   await expect(page.getByText("Browser Automation")).toBeVisible();
   await expect(page.getByText("Status Dashboard", { exact: true }).last()).toBeVisible();
-  await page.getByRole("button", { name: "Tool Search: Done", exact: true }).click();
+  const discovery = page.getByRole("button", { name: "Tool Search: Done", exact: true });
+  await expect(discovery).toHaveCount(1);
+  await discovery.click();
+  await expect(page.getByText("check stock for parts", { exact: true })).toBeVisible();
+  await expect(page.getByText("browser create_browser_session browser_navigate browser_snapshot close_browser_session", { exact: true })).toBeVisible();
   await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-  await expect(page.getByText(/browserSessionId|private-session|browser_navigate|depth:|Internal browser operation/)).toHaveCount(0);
+  await expect(page.getByText(/browserSessionId|private-session|depth:|Internal browser operation/)).toHaveCount(0);
   await expect(page.getByText("https://status.example/", { exact: true })).toHaveCount(0);
-  await expect(page.locator('a[href="https://status.example/"]')).toBeVisible();
+  await expect(page.locator('a[href="https://status.example/"]')).toHaveCount(0);
+  await expect(page.locator(".source-pill").last()).toContainText("Status Dashboard");
   await expect(page.getByPlaceholder("Ask Fibey something...")).toBeEnabled();
+});
+
+test("closing a session without reading the dashboard is not a successful browse", async ({ page }) => {
+  const events = [
+    ...["create_browser_session", "close_browser_session"].flatMap((operation) =>
+      ["running", "complete"].map((status) => ["activity", {
+        tool: `browser_automation___${operation}`, call_id: operation, status,
+      }]),
+    ),
+    ["delta", { content: "I couldn't read the Status Dashboard." }],
+    ["done", "[DONE]"],
+  ];
+  await page.route("**/api/chat", (route) => route.fulfill({
+    status: 200, contentType: "text/event-stream",
+    body: events.map(([event, data]) =>
+      `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+    ).join(""),
+  }));
+  await page.goto("/");
+  await page.getByPlaceholder("Ask Fibey something...").fill("Any NE-3 alerts?");
+  await page.getByPlaceholder("Ask Fibey something...").press("Enter");
+  await expect(page.getByRole("button", { name: "Browse Status Dashboard: Error", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Browse Status Dashboard: Done", exact: true })).toHaveCount(0);
+});
+
+test("grouped discovery retains a failed query even after another query succeeds", async ({ page }) => {
+  const events = [
+    ["activity", { tool: "tool_search", call_id: "failed-search", status: "running", args: '{"query":"work order tools"}' }],
+    ["activity", { tool: "tool_search", call_id: "failed-search", status: "error", result: "Discovery unavailable" }],
+    ["activity", { tool: "tool_search", call_id: "browser-search", status: "running", args: '{"query":"browser lifecycle"}' }],
+    ["activity", { tool: "tool_search", call_id: "browser-search", status: "complete", results: [] }],
+    ["delta", { content: "The work order tools could not be retrieved." }],
+    ["done", "[DONE]"],
+  ];
+  await page.route("**/api/chat", (route) => route.fulfill({
+    status: 200, contentType: "text/event-stream",
+    body: events.map(([event, data]) =>
+      `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+    ).join(""),
+  }));
+  await page.goto("/");
+  await page.getByPlaceholder("Ask Fibey something...").fill("Brief me with network status.");
+  await page.getByPlaceholder("Ask Fibey something...").press("Enter");
+  const discovery = page.getByRole("button", { name: "Tool Search: Error", exact: true });
+  await expect(discovery).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Tool Search: Done", exact: true })).toHaveCount(0);
+  await discovery.click();
+  await expect(page.getByText("work order tools", { exact: true })).toBeVisible();
+  await expect(page.getByText("browser lifecycle", { exact: true })).toBeVisible();
+  await expect(page.getByText("Discovery unavailable", { exact: true }).first()).toBeVisible();
 });
 
 test("the browser group stays running between steps, retains failures, and resets next turn", async ({ page }) => {

@@ -46,6 +46,20 @@ class HostedGatewayTests(unittest.TestCase):
             ))
         return events
 
+    def test_rate_limits_are_actionable_without_sdk_details_or_links(self):
+        events = self.chat_events([{
+            "type": "response.failed",
+            "error": {
+                "code": "rate_limit_exceeded",
+                "message": "openai.RateLimitError: token quota exceeded; https://example.invalid/quota",
+            },
+        }])
+        self.assertIn(("error", {
+            "message": "The model's rate limit was reached. Wait a minute before trying again.",
+        }), events)
+        self.assertNotIn("https://", json.dumps(events))
+        self.assertEqual(events[-1], ("done", "[DONE]"))
+
     def test_status_question_names_the_site_without_forwarding_browser_session_data(self):
         live_view = "https://browser.example/live?token=private-session"
         tool = "browser_automation___create_browser_session"
@@ -130,6 +144,12 @@ class HostedGatewayTests(unittest.TestCase):
                     ("response.mcp_call_failed", "error", "error"),
                 )
             ),
+            *(
+                ({"type": kind, "item_id": "mcp-browser", "output": json.dumps({
+                    "content": [{"type": "text", "text": json.dumps({"isError": True, "error": live_view})}],
+                })}, "error")
+                for kind in ("response.mcp_call.completed", "response.mcp_call_completed")
+            ),
         ]
         for ending, status in endings:
             with self.subTest(kind=ending["type"], status=status):
@@ -188,6 +208,9 @@ class HostedGatewayTests(unittest.TestCase):
         for output in (
             "Error: Function failed.",
             '{"isError":true,"content":[{"type":"text","text":"Search unavailable"}]}',
+            json.dumps({"content": [{
+                "type": "text", "text": '{"isError":true,"error":"Search unavailable"}',
+            }]}),
         ):
             with self.subTest(output=output):
                 call = {

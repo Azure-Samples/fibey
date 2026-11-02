@@ -29,6 +29,7 @@ from agent_framework import (
 from agent_framework.foundry import FoundryChatClient
 
 from fibey.agent.mcp_skills import McpSkillsSource
+from fibey.agent.browser_sessions import BrowserSessionGuard
 from fibey.agent.prompts import load_system_prompt
 from fibey.tool_results import is_browser_tool, tool_result_is_error, tool_search_results
 
@@ -111,6 +112,8 @@ def _create_toolbox_mcp(credential) -> MCPStreamableHTTPTool | None:
         url=toolbox_url,
         http_client=auth_http_client,
         load_prompts=False,
+        # Toolbox can advertise partial native operations; keep one dispatch path.
+        allowed_tools=["tool_search", "call_tool"],
     )
 
 
@@ -202,6 +205,7 @@ def create_agent() -> tuple[Agent, list]:
         name="fibey",
         instructions=load_system_prompt(),
         tools=tools,
+        middleware=[BrowserSessionGuard(toolbox_mcp.call_tool)] if toolbox_mcp else None,
     )
 
     return agent, tools

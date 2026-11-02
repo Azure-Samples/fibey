@@ -43,6 +43,10 @@ _hosted_sessions: dict[str, str] = {}
 
 def _sse(event: str, data: dict | str) -> str:
     """Format a server-sent event."""
+    if event == "error" and isinstance(data, dict):
+        message = str(data.get("message", "")).lower()
+        if "ratelimiterror" in message or "rate_limit_exceeded" in message:
+            data = {**data, "message": "The model's rate limit was reached. Wait a minute before trying again."}
     if event == "activity" and isinstance(data, dict) and is_browser_tool(data.get("tool", "")):
         # Browser session payloads can contain sensitive Live View links.
         data = {
@@ -293,11 +297,12 @@ async def _run_hosted(message: str, session_id: str) -> AsyncGenerator[str, None
                             call_id = event.get("call_id", "") or event.get("item_id", "")
                             output = event.get("output", "") or event.get("result", "")
                             out_str = output if isinstance(output, str) else json.dumps(output)
+                            is_error = tool_result_is_error(output)
                             yield _sse("activity", {
                                 "tool": event.get("name") or calls.get(call_id, {}).get("name", ""),
                                 "call_id": call_id,
-                                "status": "complete",
-                                "detail": "Done",
+                                "status": "error" if is_error else "complete",
+                                "detail": "Tool call failed" if is_error else "Done",
                                 "args": "",
                                 "result": out_str[:2000],
                             })

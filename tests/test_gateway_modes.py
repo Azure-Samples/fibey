@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import subprocess
@@ -5,13 +6,172 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from agent_framework import ChatResponse, ChatResponseUpdate, Content, ResponseStream
+import httpx
+from agent_framework import Agent, ChatResponse, ChatResponseUpdate, Content, FunctionTool, Message, ResponseStream
+from agent_framework.exceptions import ToolExecutionException
+from agent_framework.foundry import FoundryChatClient
+from azure.identity import AzureCliCredential
 from fastapi.testclient import TestClient
 
 from fibey.gateway import api_server
+from fibey.agent.browser_sessions import BrowserSessionGuard
 
 
 class GatewayModeTests(unittest.TestCase):
+    def test_failed_browser_reads_close_once_even_when_the_model_retries_or_cleanup_fails(self):
+        create = "browser_automation___create_browser_session"
+        navigate = "browser_automation___browser_navigate"
+        close = "browser_automation___close_browser_session"
+        browser_args = {"browserSessionId": "private-session", "url": "https://status.example/"}
+        steps = [
+            (create, {}),
+            (navigate, browser_args),
+            (navigate, browser_args),
+            (close, {"browserSessionId": "private-session"}),
+            None,
+        ]
+
+        class ScriptedClient(FoundryChatClient):
+            def __init__(self):
+                super().__init__(
+                    project_endpoint="https://foundry.example/api/projects/fibey",
+                    model="controlled-model", credential=AzureCliCredential(),
+                )
+                self.steps = iter(steps * 2)
+                self.response_index = 0
+
+            def _inner_get_response(self, *, stream, **kwargs):
+                step = next(self.steps)
+                self.response_index += 1
+                contents = [Content.from_function_call(
+                    call_id=f"call-{self.response_index}", name="call_tool",
+                    arguments=json.dumps({"name": step[0], "arguments": step[1]}),
+                )] if step else [Content.from_text("I couldn't read the Status Dashboard.")]
+                response = ChatResponse(messages=[Message(role="assistant", contents=contents)])
+
+                async def updates():
+                    yield ChatResponseUpdate(role="assistant", contents=contents)
+
+                async def result():
+                    return response
+
+                return ResponseStream(updates(), finalizer=lambda _: response) if stream else result()
+
+        for cleanup_fails in (False, True):
+            with self.subTest(cleanup_fails=cleanup_fails):
+                calls = []
+
+                def call_tool(name: str, arguments: dict) -> str:
+                    calls.append(name)
+                    if name == create:
+                        return json.dumps({"browserSessionId": "private-session"})
+                    if name == navigate:
+                        if cleanup_fails:
+                            raise ToolExecutionException("Read timed out")
+                        return json.dumps({"content": [{
+                            "type": "text", "text": '{"isError":true,"error":"Read failed"}',
+                        }]})
+                    if cleanup_fails:
+                        raise ToolExecutionException("Session expired")
+                    return '{"closed":true}'
+
+                async def dispatch(tool_name, **kwargs):
+                    self.assertEqual(tool_name, "call_tool")
+                    return call_tool(**kwargs)
+
+                model = ScriptedClient()
+                self.addCleanup(lambda model=model: asyncio.run(model.client.close()))
+                self.addCleanup(lambda model=model: asyncio.run(model.project_client.close()))
+                agent = Agent(
+                    client=model, tools=[FunctionTool(name="call_tool", func=call_tool)],
+                    middleware=[BrowserSessionGuard(dispatch)],
+                    default_options={"store": False},
+                )
+                with (
+                    patch.object(api_server, "AGENT_MODE", "local"),
+                    patch("fibey.agent.agent.create_agent", return_value=(agent, [])),
+                    TestClient(api_server.app) as client,
+                ):
+                    # The same middleware must keep distinct chat sessions isolated.
+                    for session_id in ("cleanup-first", "cleanup-second"):
+                        response = client.post("/api/chat", json={
+                            "message": "Any NE-3 alerts?", "session_id": session_id,
+                        })
+                        client.post("/api/sessions/reset", json={"session_id": session_id})
+                        self.assertNotIn("event: error", response.text)
+                        self.assertNotIn("private-session", response.text)
+                        self.assertIn("I couldn't read the Status Dashboard.", response.text)
+                self.assertEqual(calls, [create, navigate, close] * 2)
+
+    def test_discovery_exposes_consistent_dispatch_despite_partial_native_tools(self):
+        def toolbox(request):
+            if request.method != "POST":
+                return httpx.Response(405)
+            body = json.loads(request.content)
+            if "id" not in body:
+                return httpx.Response(202)
+            method = body["method"]
+            if method == "initialize":
+                result = {
+                    "protocolVersion": body["params"]["protocolVersion"],
+                    "capabilities": {"tools": {}, "resources": {}},
+                    "serverInfo": {"name": "controlled-toolbox", "version": "1"},
+                }
+            elif method == "tools/list":
+                result = {"tools": [
+                    {"name": name, "inputSchema": schema}
+                    for name, schema in (
+                        ("tool_search", {"type": "object", "properties": {"query": {"type": "string"}}}),
+                        ("call_tool", {"type": "object", "properties": {
+                            "name": {"type": "string"}, "arguments": {"type": "object"},
+                        }, "required": ["name"]}),
+                        ("browser_automation___create_browser_session", {"type": "object", "properties": {}}),
+                        ("browser_automation___close_browser_session", {"type": "object", "properties": {
+                            "browserSessionId": {"type": "string"},
+                        }}),
+                    )
+                ]}
+            elif method == "resources/list":
+                result = {"resources": []}
+            elif method == "ping":
+                result = {}
+            else:
+                self.fail(f"Unexpected MCP method: {method}")
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": result})
+
+        def model_response(*args, **kwargs):
+            functions = [tool.name for tool in kwargs["options"]["tools"]]
+            self.assertEqual(sorted(functions), ["call_tool", "tool_search"])
+
+            async def updates():
+                yield ChatResponseUpdate(contents=[Content.from_text("Tool discovery ready.")])
+            return ResponseStream(updates(), finalizer=lambda _: ChatResponse())
+
+        async def send(client, request, **kwargs):
+            response = toolbox(request)
+            response.request = request
+            return response
+
+        with (
+            patch.dict(os.environ, {
+                "FOUNDRY_PROJECT_ENDPOINT": "https://foundry.example/api/projects/fibey",
+                "TOOLBOX_MCP_URL": "https://toolbox.example/mcp",
+                "TOOLBOX_API_KEY": "",
+            }),
+            patch.object(api_server, "AGENT_MODE", "local"),
+            patch("azure.identity.AzureCliCredential.get_token"),
+            patch.object(httpx.AsyncClient, "send", new=send),
+            patch("agent_framework.foundry.FoundryChatClient.get_response", side_effect=model_response),
+            TestClient(api_server.app) as client,
+        ):
+            response = client.post("/api/chat", json={
+                "message": "Any NE-3 alerts?", "session_id": "dispatch-regression",
+            })
+            client.post("/api/sessions/reset", json={"session_id": "dispatch-regression"})
+
+        self.assertNotIn("event: error", response.text)
+        self.assertIn("Tool discovery ready.", response.text)
+
     def test_local_status_activity_names_only_the_site_even_when_browser_calls_fail(self):
         tool = "browser_automation___browser_snapshot"
         live_view = "https://browser.example/live?token=private-session"

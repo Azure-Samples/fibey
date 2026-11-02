@@ -3,6 +3,11 @@ import { test, expect } from "@playwright/test";
 const workOrderTool = "work_orders___get_work_order_work_orders__work_order_id__get";
 const stockTool = "inventory___check_stock_batch";
 const knowledgeTool = "knowledge_base___knowledge_base_retrieve";
+const browserTools = [
+  "browser_automation___create_browser_session",
+  "browser_automation___browser_navigate",
+  "browser_automation___close_browser_session",
+];
 const cases = [
   {
     name: "WO-003 preparation",
@@ -28,19 +33,17 @@ const cases = [
   {
     name: "network status",
     prompt: "What's the network status of NE-3 Access Ring and OLT-NE-201? Include any NE-3 alert and the OLT's recent incident.",
-    tools: [
-      "browser_automation___create_browser_session",
-      "browser_automation___browser_navigate",
-      "browser_automation___close_browser_session",
-    ],
+    tools: browserTools,
+    networkStatus: true,
     answer: /NE-3/,
   },
   {
-    name: "aerial installation safety",
-    prompt: "What safety protocols should a technician review before performing aerial cable installation?",
-    skill: "knowledge-retrieval",
-    tools: [knowledgeTool],
-    answer: /aerial|height|fall protection/i,
+    name: "WO-007 briefing with network status",
+    prompt: "Give me a full field briefing for WO-007: parts availability, procedures, safety, and network alerts and incidents for NE-3 Access Ring and OLT-NE-201.",
+    skill: "field-briefing",
+    tools: [workOrderTool, stockTool, knowledgeTool],
+    networkStatus: true,
+    answer: /WO-007/,
   },
   {
     name: "WO-007 field briefing",
@@ -104,6 +107,9 @@ for (const scenario of cases) {
     const operationalIndex = activities.findIndex((activity) => !["load_skill", "tool_search"].includes(activity.tool));
     expect(operationalIndex, "Operational calls must follow discovery").toBeGreaterThan(searchCompleteIndex);
     expect(completed.map((activity) => activity.tool)).toEqual(expect.arrayContaining(scenario.tools));
+    expect(completed.filter((activity) => activity.tool === "tool_search"),
+      "Use one core discovery query and, only when needed, one browser query")
+      .toHaveLength(scenario.networkStatus && scenario.skill ? 2 : 1);
     expect(activities.some((activity) =>
       /___(?:create|update|delete)_/.test(activity.tool) &&
       activity.tool !== "browser_automation___create_browser_session"
@@ -117,14 +123,18 @@ for (const scenario of cases) {
     const timeline = page.getByRole("button").filter({ hasText: /Load Skill|Tool Search|Search Parts|Check Stock|Get Work Order|Knowledge Base/ });
     await expect(timeline.first()).toContainText(scenario.skill ? "Load Skill" : "Tool Search");
     await expect(page.locator(".markdown-body").last()).toContainText(scenario.answer);
-    if (!scenario.skill) {
+    if (scenario.networkStatus) {
+      expect(completed.map((activity) => activity.tool)).toEqual(expect.arrayContaining(browserTools));
       expect(answer).toMatch(/NE-3[\s\S]{0,160}\boutage\b/i);
       expect(answer).toMatch(/fiber cut/i);
       expect(answer).toMatch(/OLT-NE-201[\s\S]{0,160}\bdegraded\b/i);
       expect(answer).toMatch(/uplink flap/i);
-      expect(answer).toMatch(/\[Status Dashboard\]\(https?:\/\/[^)]+\)/);
+      expect(answer).toMatch(/(?:Source:\s*|[-*]\s*(?:📄\s*)?)Status Dashboard\b/);
+      expect(answer).not.toMatch(/https?:\/\//);
+      await expect(page.locator(".source-pill").filter({ hasText: "Status Dashboard" })).toHaveCount(1);
       const browserActivity = page.getByRole("button", { name: "Browse Status Dashboard: Done", exact: true });
       await expect(browserActivity).toHaveCount(1);
+      await expect(page.getByRole("button", { name: "Tool Search: Done", exact: true })).toHaveCount(1);
       await browserActivity.click();
       await expect(page.getByText("Browser Automation")).toBeVisible();
       await expect(page.getByText("Status Dashboard", { exact: true }).last()).toBeVisible();

@@ -7,6 +7,8 @@ interface ActivitySidebarProps {
   onClear?: () => void;
 }
 
+type DisplayActivity = ActivityEvent & { searches?: ActivityEvent[] };
+
 /** Map raw tool names to friendly display names and icons */
 function parseToolInfo(raw: string): { name: string; icon: string; category: string; source: string } {
   const lower = raw.toLowerCase();
@@ -216,13 +218,20 @@ function groupDashboardActivities(activities: ActivityEvent[], isStreaming: bool
   const first = browserCalls[0];
   if (!first) return activities;
 
+  const hasRead = browserCalls.some((activity) =>
+    activity.status === "complete" && /___browser_(navigate|snapshot)$/.test(activity.tool),
+  );
+  const unfinished = browserCalls.some((activity) =>
+    activity.status === "running" || activity.status === "pending",
+  );
+  const failed = browserCalls.some((activity) => activity.status === "error")
+    || (!isStreaming && (!hasRead || unfinished));
+
   // Activities belong to the current chat turn and one configured dashboard.
   const dashboard: ActivityEvent = {
     id: `dashboard-${first.call_id || first.id}`,
     tool: "browser_automation",
-    status: browserCalls.some((activity) => activity.status === "error") ? "error"
-      : isStreaming || browserCalls.some((activity) => activity.status === "running") ? "running"
-      : browserCalls.some((activity) => activity.status === "pending") ? "pending" : "complete",
+    status: failed ? "error" : isStreaming ? "running" : "complete",
     detail: "Status Dashboard",
     timestamp: first.timestamp,
   };
@@ -232,8 +241,32 @@ function groupDashboardActivities(activities: ActivityEvent[], isStreaming: bool
   );
 }
 
+function groupDiscoveryActivities(activities: ActivityEvent[]): DisplayActivity[] {
+  const searches = activities.filter((activity) => activity.tool === "tool_search");
+  const first = searches[0];
+  if (!first) return activities;
+
+  const failed = searches.find((search) => search.status === "error");
+  const discovery: DisplayActivity = {
+    ...first,
+    id: `discovery-${first.call_id || first.id}`,
+    status: failed ? "error"
+      : searches.some((search) => search.status === "running") ? "running"
+      : searches.some((search) => search.status === "pending") ? "pending" : "complete",
+    args: undefined,
+    result: failed?.result,
+    detail: failed?.detail || first.detail,
+    results: [...new Map(searches.flatMap((search) => search.results ?? [])
+      .map((result) => [result.name, result])).values()],
+    searches,
+  };
+  return activities.flatMap((activity) =>
+    activity === first ? [discovery] : activity.tool === "tool_search" ? [] : [activity],
+  );
+}
+
 export default function ActivitySidebar({ activities, isStreaming, onClear }: ActivitySidebarProps) {
-  const displayActivities = groupDashboardActivities(activities, isStreaming);
+  const displayActivities = groupDiscoveryActivities(groupDashboardActivities(activities, isStreaming));
   const completed = displayActivities.filter((a) => a.status === "complete").length;
   const running = displayActivities.filter((a) => a.status === "running").length;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -432,6 +465,26 @@ export default function ActivitySidebar({ activities, isStreaming, onClear }: Ac
                                 <div key={key} className="flex items-baseline gap-1.5 text-[11px]">
                                   <span className="shrink-0 font-medium text-gray-500 dark:text-gray-400">{key}:</span>
                                   <span className="break-all text-gray-700 dark:text-gray-300">{val}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {activity.searches && (
+                            <div className="space-y-1.5 border-t border-gray-100 pt-1.5 dark:border-gray-700">
+                              <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                                Discovery queries
+                              </div>
+                              {activity.searches.map((search) => (
+                                <div key={search.call_id || search.id} className="text-[11px]">
+                                  <span className="break-words text-gray-700 dark:text-gray-300">
+                                    {parseArgs(search.args, search.tool)?.[0]?.[1] || search.detail || "Tool discovery"}
+                                  </span>
+                                  <span className={`ml-1.5 ${statusMeta(search.status).color}`}>
+                                    {statusMeta(search.status).label}
+                                  </span>
+                                  {search.status === "error" && (
+                                    <p className="text-red-600 dark:text-red-400">{search.result || search.detail}</p>
+                                  )}
                                 </div>
                               ))}
                             </div>

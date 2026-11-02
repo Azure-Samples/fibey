@@ -94,6 +94,14 @@ function extractSources(content: string): {
   body: string;
   sources: string[];
 } {
+  const dashboardCitation = content.match(
+    /(?:Source:\s*Status Dashboard|(?:Source:\s*)?\[Status Dashboard\]\(https?:\/\/[^)]+\))\s*$/i,
+  );
+  if (dashboardCitation) {
+    const { body, sources } = extractSources(content.slice(0, dashboardCitation.index).trimEnd());
+    return { body, sources: [...sources.filter((source) => source !== "Status Dashboard"), "Status Dashboard"] };
+  }
+
   // Format 1: --- separator + Sources heading + 📄 bullet list
   const structuredPattern =
     /\n---\n\s*\*{0,2}Sources?\*{0,2}\s*\n((?:\s*[-*]\s*📄?\s*.+\n?)+)$/i;
@@ -205,7 +213,7 @@ export default function MessageBubble({ message, isStreaming }: MessageBubblePro
                     <li key={i}>
                       <span className="source-pill">
                         <span className="material-icons-outlined source-icon">description</span>
-                        {src}
+                        {src.replace(/\[Status Dashboard\]\(https?:\/\/[^)]+\)/gi, "Status Dashboard")}
                       </span>
                     </li>
                   ))}

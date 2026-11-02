@@ -7,6 +7,10 @@ def is_browser_tool(name: str) -> bool:
 
 
 def tool_result_is_error(result: Any) -> bool:
+    if isinstance(result, list):
+        return any(tool_result_is_error(item) for item in result)
+    if getattr(result, "type", None) == "text":
+        return tool_result_is_error(result.text)
     if isinstance(result, str):
         if result.lstrip().lower().startswith("error:"):
             return True
@@ -14,7 +18,11 @@ def tool_result_is_error(result: Any) -> bool:
             result = json.loads(result)
         except json.JSONDecodeError:
             return False
-    return isinstance(result, dict) and bool(result.get("isError") or result.get("error"))
+    if not isinstance(result, dict):
+        return False
+    return bool(result.get("isError") or result.get("error")) or (
+        result.get("type") == "text" and tool_result_is_error(result.get("text"))
+    ) or tool_result_is_error(result.get("content"))
 
 
 def tool_search_results(result: Any) -> list[dict[str, str]]:

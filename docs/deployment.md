@@ -183,9 +183,10 @@ uv run --no-sync python scripts/smoke-network-status.py -e fibey-dev
 
 The script sends a network-status question directly to the hosted Responses API,
 checks Browser Automation visited the configured page and returned dashboard
-content, and verifies NE-3/OLT-NE-201 fixture facts and a Status Dashboard source
-link. It prints safe evidence summaries and latency, never raw browser session
-URLs. Exit code 1 means the gate failed: stop and re-plan before dependent work.
+content, and verifies NE-3/OLT-NE-201 fixture facts and source-only attribution
+(`Source: Status Dashboard`, without a URL). It prints safe evidence summaries
+and latency, never raw browser session URLs. Exit code 1 means the gate failed:
+stop and re-plan before dependent work.
 This tests neither gateway/UI activity rendering nor fresh provisioning.
 
 Browser tool discovery must include session creation and closure, not just
@@ -211,6 +212,12 @@ operations, and treats page text as untrusted data. Failed reads must close the
 session before reporting that the dashboard could not be read, with no guessed
 status, fallback source, or dashboard source citation. An expired session may
 also fail to close; neither the read nor cleanup is retried.
+
+Both modes use a session-scoped runtime guard to attempt cleanup immediately
+after a failed navigation or snapshot, even if the model omits the close call.
+It recognizes nested tool errors, reports cleanup failure, and blocks further
+reads or duplicate cleanup attempts for that session. Successful reads still
+follow the normal model-directed close step.
 
 Run the opt-in real-model checks with controlled Browser Automation responses:
 
