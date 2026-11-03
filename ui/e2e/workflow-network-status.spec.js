@@ -1,17 +1,24 @@
 import { test, expect } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 
-test.afterEach(async ({ request }, testInfo) => {
+let sessionId;
+
+test.beforeEach(() => {
+  sessionId = randomUUID();
+});
+
+test.afterEach(async ({ request }) => {
   const response = await request.post("/api/sessions/reset", {
-    data: { session_id: testInfo.testId },
+    data: { session_id: sessionId },
   });
   expect(response.status()).toBe(200);
 });
 
-test("a field briefing includes the identified network element without losing job context", async ({ request }, testInfo) => {
+test("a field briefing includes the identified network element without losing job context", async ({ request }) => {
   const response = await request.post("/api/chat", {
     timeout: 150_000,
     data: {
-      session_id: testInfo.testId,
+      session_id: sessionId,
       message: "Give me a full field briefing for WO-007. The network elements for this briefing are NE-3 Access Ring and OLT-NE-201.",
     },
   });

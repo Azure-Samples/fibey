@@ -7,7 +7,7 @@ from pathlib import Path
 
 from agent_framework import (
     Agent, AgentSession, ChatResponse, ChatResponseUpdate, Content, FunctionTool,
-    Message, ResponseStream,
+    InlineSkill, Message, ResponseStream, SkillFrontmatter, SkillsProvider,
 )
 from agent_framework.foundry import FoundryChatClient
 from azure.identity import AzureCliCredential
@@ -87,8 +87,11 @@ class BrowserSessionTests(unittest.IsolatedAsyncioTestCase):
         self.create_started = None
         self.release_create = None
         self.cleanup_fails = False
+        self.knowledge_result = json.dumps({
+            "guidance": "Reference architecture example: NE-3 connects to OLT-NE-201.",
+        })
 
-        async def call_tool(name: str, arguments: dict) -> str:
+        async def call_tool(name: str, arguments: dict) -> str | list[Content]:
             self.calls.append((name, arguments))
             if name == WORK_ORDER:
                 return json.dumps({"content": [{
@@ -101,21 +104,21 @@ class BrowserSessionTests(unittest.IsolatedAsyncioTestCase):
                 return json.dumps({"browserSessionId": SESSION})
             if name == CLOSE:
                 return '{"isError":true,"error":"Session expired"}' if self.cleanup_fails else '{"closed":true}'
+            if "knowledge_base" in name:
+                return [Content.from_text(self.knowledge_result)]
             return '{"snapshot":"NE-3 Access Ring: Outage"}'
 
         async def invoke(tool_name, **kwargs):
             self.assertEqual(tool_name, "call_tool")
             return await call_tool(**kwargs)
 
-        def load_skill(skill_name: str) -> str:
-            return f"Loaded {skill_name}"
-
         self.agent = Agent(
             client=self.model,
-            tools=[
-                FunctionTool(name="call_tool", func=call_tool),
-                FunctionTool(name="load_skill", func=load_skill),
-            ],
+            tools=[FunctionTool(name="call_tool", func=call_tool)],
+            context_providers=[SkillsProvider(InlineSkill(
+                frontmatter=SkillFrontmatter(name="field-briefing", description="Field briefing"),
+                instructions="Prepare a briefing.",
+            ))],
             middleware=browser_session_middleware(invoke),
             default_options={"store": False},
         )
@@ -138,6 +141,64 @@ class BrowserSessionTests(unittest.IsolatedAsyncioTestCase):
             [dispatch(CREATE), dispatch(NAVIGATE)],
         ], stream=True)
         self.assertEqual([name for name, _ in self.calls], [WORK_ORDER])
+
+    async def test_hosted_style_run_without_an_explicit_session_enforces_eligibility(self):
+        for stream in (False, True):
+            with self.subTest(stream=stream):
+                self.calls.clear()
+                self.model.steps = iter([
+                    [load_briefing()],
+                    [dispatch(WORK_ORDER, {"work_order_id": "WO-007"})],
+                    [dispatch(CREATE)],
+                ])
+                response = self.agent.run(BRIEFING, stream=stream)
+                if stream:
+                    async for _ in response:
+                        pass
+                else:
+                    await response
+                self.assertEqual([name for name, _ in self.calls], [WORK_ORDER])
+
+    async def test_hosted_style_run_closes_an_implicitly_created_session(self):
+        for stream in (False, True):
+            with self.subTest(stream=stream):
+                self.calls.clear()
+                self.model.steps = iter([
+                    [dispatch(CREATE)],
+                    [dispatch(NAVIGATE, {"browserSessionId": SESSION, "url": URL})],
+                ])
+                response = self.agent.run("Check NE-3.", stream=stream)
+                if stream:
+                    async for _ in response:
+                        pass
+                else:
+                    await response
+                self.assertEqual([name for name, _ in self.calls], [CREATE, NAVIGATE, CLOSE])
+
+    async def test_briefing_results_explain_browser_ineligibility_before_model_attempts_it(self):
+        await self.run_turn([
+            [load_briefing()],
+            [dispatch(WORK_ORDER, {"work_order_id": "WO-007"})],
+            [dispatch("knowledge_base___knowledge_base_retrieve", {"queries": ["Splicing safety"]})],
+        ], stream=True)
+        knowledge_result = self.model.results[-1]
+        self.assertIn(self.knowledge_result, str(knowledge_result))
+        self.assertIn("Do not call Browser Automation", str(knowledge_result))
+        self.assertIn("reference documents", str(knowledge_result))
+        order_results = [
+            result for result in self.model.results
+            if "WO-007" in str(result)
+        ]
+        self.assertTrue(order_results)
+        self.assertIn("Do not call Browser Automation", str(order_results[-1]))
+
+    async def test_identified_briefing_does_not_receive_a_no_browsing_instruction(self):
+        await self.run_turn([
+            [load_briefing()],
+            [dispatch(WORK_ORDER, {"work_order_id": "WO-007"})],
+            [dispatch("knowledge_base___knowledge_base_retrieve", {"queries": ["Splicing safety"]})],
+        ], BRIEFING + " Include NE-3.", stream=True)
+        self.assertEqual(self.model.results[-1], self.knowledge_result)
 
     async def test_invented_browser_names_cannot_bypass_the_briefing_gate(self):
         await self.run_turn([

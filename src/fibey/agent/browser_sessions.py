@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from agent_framework import (
     AgentContext, AgentMiddleware, AgentSession, Content,
-    FunctionInvocationContext, FunctionMiddleware,
+    FunctionInvocationContext, FunctionMiddleware, FunctionTool,
 )
 from agent_framework.exceptions import ToolExecutionException
 from mcp.shared.exceptions import McpError
@@ -59,14 +59,15 @@ class BrowserTurnGuard(AgentMiddleware):
     ) -> None:
         session = context.session
         if session is None:
-            await call_next()
-            return
+            # Hosted Responses runs omit the session; initialize it before SkillsProvider does.
+            session = context.session = AgentSession()
         message = next((
             message for message in reversed(context.messages) if message.role == "user"
         ), None)
         session.state[_TURN] = {
             "field_briefing": False,
             "network_identified": _has_network_identifier(message.contents) if message else False,
+            "work_order_checked": False,
         }
 
         async def cleanup() -> None:
@@ -126,8 +127,32 @@ class BrowserSessionGuard(FunctionMiddleware):
                 and not tool_result_is_error(context.result)
             ):
                 turn = context.session.state.get(_TURN)
-                if turn is not None and _has_network_identifier(context.result):
-                    turn["network_identified"] = True
+                if turn is not None:
+                    turn["work_order_checked"] = True
+                    if _has_network_identifier(context.result):
+                        turn["network_identified"] = True
+            if context.session is not None and isinstance(name, str) and (
+                name.startswith("work_orders___get_work_order_")
+                or "knowledge_base" in name
+            ) and not tool_result_is_error(context.result):
+                turn = context.session.state.get(_TURN)
+                if (
+                    turn and turn["field_briefing"] and turn["work_order_checked"]
+                    and not turn["network_identified"]
+                ):
+                    context.result = [
+                        *FunctionTool.parse_result(context.result),
+                        Content.from_text(
+                            "Runtime briefing guidance: No segment or OLT was identified in "
+                            "the current request or fetched work order. Do not call Browser "
+                            "Automation or discover browser tools for this briefing. Network "
+                            "identifiers in reference documents do not identify this job's "
+                            "network elements. Continue the work order, parts, procedures, "
+                            "and safety briefing, and state that network status was not "
+                            "checked because no segment or OLT was identified. Do not cite "
+                            "the Status Dashboard or append its source line; it was not read."
+                        ),
+                    ]
             return
         if context.session is None:
             raise ToolExecutionException("Browser operations require an agent session")

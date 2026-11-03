@@ -118,6 +118,12 @@ for (const scenario of cases) {
       expect(activities.some((activity) => activity.tool.startsWith("browser_automation___")),
         "Parts-only preparation must not trigger a network check").toBe(false);
     }
+    if (scenario.skill === "field-briefing" && !scenario.networkStatus) {
+      expect(activities.some((activity) => activity.tool.startsWith("browser_automation___")),
+        "A briefing without a network identifier must not propose browser calls").toBe(false);
+      expect(answer.replace(/\*/g, "")).toMatch(/network status[\s:]*(?:was\s+)?not checked/i);
+      expect(answer).not.toMatch(/(?:Source:\s*|[-*]\s*(?:📄\s*)?)Status Dashboard\b/);
+    }
     expect(answer).toMatch(scenario.answer);
 
     const timeline = page.getByRole("button").filter({ hasText: /Load Skill|Tool Search|Search Parts|Check Stock|Get Work Order|Knowledge Base/ });

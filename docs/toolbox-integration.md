@@ -105,6 +105,9 @@ and closes sessions left open at turn completion, including after malformed
 parallel creation/navigation calls. Argument-validation rejection means no read
 was attempted; the model may correct the arguments once. Actual failed reads
 still receive one cleanup attempt and must not be retried.
+The turn middleware initializes an `AgentSession` when the caller omits one,
+as the hosted Responses server does, so eligibility and cleanup share the same
+state as skill and tool invocation.
 
 ### KB resource URI compatibility
 
@@ -168,6 +171,9 @@ explicitly labeled numeric segment IDs (for example `segment Rural-9`).
 Prior-turn identifiers, inventory, and knowledge-base results do not authorize
 briefing browsing. Standalone network-status lookups retain their existing flow;
 this is not a general natural-language request classifier.
+For identifier-free briefings, successful work-order and knowledge results also
+carry runtime guidance to skip browsing, before the model proposes a browser
+call. Reference-document identifiers do not authorize a job's network check.
 The gate covers the entire Browser Automation namespace, including invented
 tool names. Only the four supported lifecycle/read operations may reach the
 provider; unknown browser operations are rejected before dispatch.
