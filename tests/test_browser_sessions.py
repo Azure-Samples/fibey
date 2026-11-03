@@ -139,6 +139,21 @@ class BrowserSessionTests(unittest.IsolatedAsyncioTestCase):
         ], stream=True)
         self.assertEqual([name for name, _ in self.calls], [WORK_ORDER])
 
+    async def test_invented_browser_names_cannot_bypass_the_briefing_gate(self):
+        await self.run_turn([
+            [load_briefing()],
+            [dispatch(WORK_ORDER, {"work_order_id": "WO-007"})],
+            [dispatch("browser_automation___browser_create_browser_session")],
+        ], stream=True)
+        self.assertEqual([name for name, _ in self.calls], [WORK_ORDER])
+
+    async def test_unknown_browser_operations_are_rejected_without_provider_dispatch(self):
+        await self.run_turn([
+            [dispatch(CREATE)],
+            [dispatch("browser_automation___browser_click", {"browserSessionId": SESSION})],
+        ], "Any NE-3 alerts?")
+        self.assertEqual([name for name, _ in self.calls], [CREATE, CLOSE])
+
     async def test_briefing_allows_identifiers_from_current_request_or_work_order(self):
         for source in ("request", "work_order"):
             with self.subTest(source=source):

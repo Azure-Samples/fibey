@@ -15,7 +15,7 @@ from agent_framework.exceptions import ToolExecutionException
 from mcp.shared.exceptions import McpError
 from pydantic import BaseModel
 
-from fibey.tool_results import tool_result_is_error
+from fibey.tool_results import is_browser_tool, tool_result_is_error
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class BrowserSessionGuard(FunctionMiddleware):
         if name == "call_tool":
             name = arguments.get("name")
             arguments = arguments.get("arguments", {})
-        if name not in {_CREATE, _CLOSE, *_READS}:
+        if not isinstance(name, str) or not is_browser_tool(name):
             if context.session is not None and name == "load_skill":
                 turn = context.session.state.get(_TURN)
                 if turn is not None and arguments.get("skill_name", "").lower() == "field-briefing":
@@ -141,6 +141,18 @@ class BrowserSessionGuard(FunctionMiddleware):
                     "Network status was not checked because no segment or OLT was identified "
                     "in the current request or fetched work order. Do not browse or cite the "
                     "Status Dashboard. Continue with the available briefing information."
+                ),
+            })
+            return
+
+        if name not in {_CREATE, _CLOSE, *_READS}:
+            logger.warning("Rejected an unknown or unsupported Browser Automation operation")
+            context.result = json.dumps({
+                "isError": True,
+                "error": (
+                    "Unknown or unsupported Browser Automation operation. "
+                    "Use only the exact discovered create_browser_session, browser_navigate, "
+                    "browser_snapshot, and close_browser_session names."
                 ),
             })
             return

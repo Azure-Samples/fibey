@@ -168,6 +168,9 @@ explicitly labeled numeric segment IDs (for example `segment Rural-9`).
 Prior-turn identifiers, inventory, and knowledge-base results do not authorize
 briefing browsing. Standalone network-status lookups retain their existing flow;
 this is not a general natural-language request classifier.
+The gate covers the entire Browser Automation namespace, including invented
+tool names. Only the four supported lifecycle/read operations may reach the
+provider; unknown browser operations are rejected before dispatch.
 
 ### Failure behavior
 
